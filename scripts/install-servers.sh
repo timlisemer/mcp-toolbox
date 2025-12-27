@@ -69,7 +69,7 @@ while IFS= read -r server_json; do
             ;;
         "node")
             if [ -f "package.json" ]; then
-                npm install --production 2>/dev/null || echo "  Dependencies skipped"
+                npm install 2>/dev/null || echo "  Dependencies skipped"
                 if [[ "$build_cmd" == *"npm run build"* ]] && [ -f "package.json" ]; then
                     grep -q '"build"' package.json && eval "$build_cmd" || echo "  Build skipped"
                 fi

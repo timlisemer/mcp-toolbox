@@ -34,7 +34,7 @@
       "description": "Tailwind CSS and SvelteKit documentation and code snippets MCP server",
       "repository": "https://github.com/CaullenOmdahl/Tailwind-Svelte-Assistant",
       "build_command": "npm install && npm run build",
-      "binary_path": "dist/index.js",
+      "binary_path": ".smithery/index.cjs",
       "install_path": "",
       "capabilities": [
         "svelte",
