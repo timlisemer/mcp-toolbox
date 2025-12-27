@@ -1,34 +1,16 @@
 services:
-  mcp-server-host:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: mcp-server-host:latest
-    container_name: mcp-server-host
+  mcp-toolbox:
+    build: .
+    image: mcp-toolbox:latest
+    container_name: mcp-toolbox
     restart: unless-stopped
     volumes:
       - ./workspace:/workspace:rw
-      - ./data:/app/data:rw
-      - ./logs:/var/log:rw
       - ./config:/app/config:ro
     environment:
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - WORKSPACE_PATH=/workspace
-      - MCP_SERVERS_CONFIG=/app/config/servers.json
-      # API Provider configuration (supports Anthropic direct or OpenRouter)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
-      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
-    ports:
-      - "8080:8080"  # Optional: for web-based MCP servers
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    healthcheck:
-      test: ["CMD", "/app/scripts/health-check.sh"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s

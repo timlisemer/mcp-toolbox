@@ -1,5 +1,5 @@
 {
-  "servers": {
+  "tools": {
     "mcp-language-server": {
       "enabled": false,
       "type": "go",

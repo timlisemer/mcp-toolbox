@@ -1,10 +1,10 @@
-name: Manually Triggered Build and Push
+name: Build and Push MCP Toolbox
 
 on:
   workflow_dispatch:
     inputs:
-      build_mcp_server_host:
-        description: 'Build mcp-server-host'
+      build_toolbox:
+        description: 'Build MCP Toolbox'
         required: false
         default: false
         type: boolean
@@ -14,8 +14,8 @@ permissions:
   packages: write
 
 jobs:
-  build_mcp_server_host_amd64:
-    if: ${{ inputs.build_mcp_server_host }}
+  build_amd64:
+    if: ${{ inputs.build_toolbox }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -34,16 +34,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push mcp-server-host (linux/amd64)
+      - name: Build and push MCP Toolbox (linux/amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository }}/mcp-server-host-linux-amd64
+          tags: ghcr.io/${{ github.repository }}/mcp-toolbox-linux-amd64
 
-  build_mcp_server_host_arm64:
-    if: ${{ inputs.build_mcp_server_host }}
+  build_arm64:
+    if: ${{ inputs.build_toolbox }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -62,10 +62,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push mcp-server-host (linux/arm64)
+      - name: Build and push MCP Toolbox (linux/arm64)
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/${{ github.repository }}/mcp-server-host-linux-arm64
+          tags: ghcr.io/${{ github.repository }}/mcp-toolbox-linux-arm64

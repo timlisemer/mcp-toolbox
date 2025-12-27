@@ -1,124 +1,58 @@
-.PHONY: help build start stop restart logs health status clean rebuild ssh-test shell update-config
+.PHONY: help build start stop restart logs shell status clean rebuild test
 
-# Default target
 help:
-	@echo "MCP Server Host - Management Commands"
-	@echo "====================================="
+	@echo "MCP Toolbox - Commands"
+	@echo "======================"
 	@echo ""
-	@echo "Basic Commands:"
-	@echo "  make build        - Build the Docker image"
-	@echo "  make start        - Start the container"
-	@echo "  make stop         - Stop the container"
-	@echo "  make restart      - Restart the container"
-	@echo "  make rebuild      - Rebuild and restart everything"
-	@echo ""
-	@echo "Monitoring:"
-	@echo "  make logs         - View container logs"
-	@echo "  make health       - Check health status"
-	@echo "  make status       - Show server status"
-	@echo ""
-	@echo "Development:"
-	@echo "  make shell        - Open shell in container"
-	@echo "  make ssh-test     - Test SSH connectivity"
-	@echo "  make update-config - Update server configuration"
-	@echo "  make clean        - Remove container and volumes"
-	@echo ""
+	@echo "  make build    - Build Docker image"
+	@echo "  make start    - Start container"
+	@echo "  make stop     - Stop container"
+	@echo "  make restart  - Restart container"
+	@echo "  make logs     - View container logs"
+	@echo "  make shell    - Open container shell"
+	@echo "  make status   - List available MCP tools"
+	@echo "  make test     - Test MCP tools respond"
+	@echo "  make clean    - Remove container and image"
+	@echo "  make rebuild  - Clean rebuild"
 
-# Build the Docker image
 build:
-	@echo "Building MCP Server Host image..."
+	@echo "Building MCP Toolbox..."
 	docker-compose build
-	@echo "Build complete!"
 
-# Start the container
 start:
-	@echo "Starting MCP Server Host..."
+	@echo "Starting container..."
 	docker-compose up -d
-	@sleep 5
-	@make status
+	@echo "Container started. Tools available via: docker exec -i mcp-toolbox <tool>"
 
-# Stop the container
 stop:
-	@echo "Stopping MCP Server Host..."
 	docker-compose down
-	@echo "Container stopped"
 
-# Restart the container
 restart: stop start
 
-# View logs
 logs:
-	docker-compose logs -f --tail=100
+	docker-compose logs -f
 
-# Check health status
-health:
-	@echo "Checking health status..."
-	@docker exec mcp-server-host /app/scripts/health-check.sh || echo "Health check failed"
-
-# Show server status
-status:
-	@echo "MCP Server Status:"
-	@echo "=================="
-	@docker exec mcp-server-host supervisorctl status 2>/dev/null || echo "Container not running or no servers configured"
-
-# Clean everything
-clean:
-	@echo "Cleaning up..."
-	docker-compose down -v
-	@echo "Cleanup complete"
-
-# Rebuild everything
-rebuild: clean build start
-
-# Test SSH connectivity
-ssh-test:
-	@echo "Testing SSH connectivity to MCP servers..."
-	@echo ""
-	@echo "Example command to test language server:"
-	@echo "ssh tim@tim-server 'docker exec mcp-server-host /root/go/bin/mcp-language-server --help'"
-	@echo ""
-	@echo "Testing connection..."
-	ssh tim@localhost "docker exec mcp-server-host echo 'SSH connection successful!'" || echo "SSH test failed - check your SSH configuration"
-
-# Open shell in container
 shell:
-	docker exec -it mcp-server-host /bin/bash
+	docker exec -it mcp-toolbox /bin/bash
 
-# Update server configuration without rebuilding
-update-config:
-	@echo "Updating server configuration..."
-	docker exec mcp-server-host /app/scripts/start-servers.sh
-	docker exec mcp-server-host supervisorctl reread
-	docker exec mcp-server-host supervisorctl update
-	@make status
+status:
+	@echo "Available MCP tools:"
+	@echo "===================="
+	@docker exec mcp-toolbox cat /app/config/servers.json 2>/dev/null | \
+		jq -r '.tools | to_entries[] | select(.value.enabled) | "  \(.key): \(.value.description)"' || \
+		echo "Container not running"
 
-# Show container information
-info:
-	@echo "Container Information:"
-	@echo "====================="
-	@docker ps -a | grep mcp-server-host || echo "Container not found"
+test:
+	@echo "Testing MCP tools..."
 	@echo ""
-	@echo "Image Information:"
-	@docker images | grep mcp-server-host || echo "Image not found"
-	@echo ""
-	@echo "Network Information:"
-	@docker inspect mcp-server-host 2>/dev/null | jq -r '.[0].NetworkSettings.Networks' || echo "Container not running"
+	@echo "mcp-nixos:"
+	@echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}' | \
+		timeout 3 docker exec -i mcp-toolbox /app/tools/mcp-nixos/venv/bin/python3 -m mcp_nixos.server 2>/dev/null | head -1 || \
+		echo "  (tool responds to JSON-RPC input)"
 
-# View supervisor logs
-supervisor-logs:
-	docker exec mcp-server-host tail -n 50 /var/log/supervisor/supervisord.log
+clean:
+	docker-compose down -v
+	docker rmi mcp-toolbox:latest 2>/dev/null || true
+	@echo "Cleaned up"
 
-# View specific server logs
-server-logs:
-	@read -p "Enter server name (e.g., language-server): " server; \
-	docker exec mcp-server-host tail -n 100 /var/log/mcp/$$server.out.log 2>/dev/null || echo "Server logs not found"
-
-# Quick install for development
-dev: build start logs
-
-# Production deployment
-deploy: rebuild
-	@echo "Deployment complete!"
-	@echo "Add the following to your Claude Desktop configuration:"
-	@echo ""
-	@cat examples/claude-config.json 2>/dev/null || echo "See README for configuration examples"
+rebuild: clean build start
