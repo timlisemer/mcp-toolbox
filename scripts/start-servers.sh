@@ -25,7 +25,10 @@ while IFS= read -r server_json; do
     binary_path=$(echo "$value" | jq -r '.binary_path')
     install_path=$(echo "$value" | jq -r '.install_path // ""')
     default_args=$(echo "$value" | jq -r '.default_args[]? // ""' | tr '\n' ' ')
-    
+
+    # Extract environment variables from config
+    env_vars=$(echo "$value" | jq -r '.environment // {} | to_entries[] | "\(.key)=\(.value)"' | tr '\n' ',' | sed 's/,$//')
+
     server_dir="$SERVERS_DIR/$name"
     
     # Determine the command based on type and paths
@@ -42,14 +45,17 @@ while IFS= read -r server_json; do
         # Build command based on type
         case "$type" in
             "node")
-                if [ -f "$server_dir/dist/index.js" ]; then
+                # Check custom binary_path first
+                if [ -n "$binary_path" ] && [ "$binary_path" != "null" ] && [ -f "$server_dir/$binary_path" ]; then
+                    command="node $server_dir/$binary_path"
+                elif [ -f "$server_dir/dist/index.js" ]; then
                     command="node $server_dir/dist/index.js"
                 elif [ -f "$server_dir/index.js" ]; then
                     command="node $server_dir/index.js"
                 elif [ -f "$server_dir/src/index.js" ]; then
                     command="node $server_dir/src/index.js"
                 else
-                    echo "Warning: No entry point found for $name"
+                    echo "Warning: No entry point found for $name (binary_path: $binary_path)"
                     continue
                 fi
                 ;;
@@ -100,7 +106,19 @@ while IFS= read -r server_json; do
     if [ -n "$default_args" ] && [ "$default_args" != "null" ]; then
         command="$command $default_args"
     fi
-    
+
+    # Build the full environment string before the heredoc
+    base_env='PATH="/usr/local/go/bin:/root/go/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",GOPATH="/root/go"'
+    # Add ANTHROPIC_API_KEY from Docker environment if set
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
+        base_env="$base_env,ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY\""
+    fi
+    if [ -n "$env_vars" ]; then
+        full_env="$base_env,$env_vars"
+    else
+        full_env="$base_env"
+    fi
+
     # Write supervisor program configuration
     cat >> "$SUPERVISOR_CONF" << ENDCONFIG
 [program:mcp-$name]
@@ -115,7 +133,7 @@ stdout_logfile_maxbytes=10MB
 stderr_logfile_maxbytes=10MB
 stdout_logfile_backups=2
 stderr_logfile_backups=2
-environment=PATH="/usr/local/go/bin:/root/go/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",GOPATH="/root/go",NODE_ENV="production",LOG_LEVEL="info"
+environment=$full_env
 user=root
 
 ENDCONFIG
