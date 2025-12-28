@@ -26,8 +26,8 @@ The container stays running so tools can be invoked via `docker exec`. MCP tools
 ## Quick Start
 
 ```bash
-# Build and start
-make build && make start
+# Build and run
+make build && make run
 
 # Check available tools
 make status
@@ -145,7 +145,7 @@ mcp-toolbox/
 
 ```bash
 make build    # Build Docker image
-make start    # Start container
+make run      # Run container (foreground, Ctrl+C to stop)
 make stop     # Stop container
 make restart  # Restart container
 make logs     # View container logs

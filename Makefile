@@ -1,11 +1,11 @@
-.PHONY: help build start stop restart logs shell status clean rebuild test
+.PHONY: help build run stop restart logs shell status clean rebuild test
 
 help:
 	@echo "MCP Toolbox - Commands"
 	@echo "======================"
 	@echo ""
 	@echo "  make build    - Build Docker image"
-	@echo "  make start    - Start container"
+	@echo "  make run      - Run container (foreground, Ctrl+C to stop)"
 	@echo "  make stop     - Stop container"
 	@echo "  make restart  - Restart container"
 	@echo "  make logs     - View container logs"
@@ -19,15 +19,13 @@ build:
 	@echo "Building MCP Toolbox..."
 	docker-compose build
 
-start:
-	@echo "Starting container..."
-	docker-compose up -d
-	@echo "Container started. Tools available via: docker exec -i mcp-toolbox <tool>"
+run:
+	docker-compose up
 
 stop:
 	docker-compose down
 
-restart: stop start
+restart: stop run
 
 logs:
 	docker-compose logs -f
@@ -55,4 +53,4 @@ clean:
 	docker rmi mcp-toolbox:latest 2>/dev/null || true
 	@echo "Cleaned up"
 
-rebuild: clean build start
+rebuild: clean build run
