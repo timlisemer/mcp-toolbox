@@ -86,61 +86,320 @@ Or add to your Claude Code MCP settings (`~/.claude/settings.json`):
 }
 ```
 
-### NixOS Integration
+### NixOS + Claude Code Integration Example
 
-On NixOS, you can use a system activation script to automatically configure MCP servers. This example removes existing servers and re-adds them on each activation:
+This setup demonstrates declarative management of Claude Code hooks and MCP servers using NixOS + home-manager, with agent-framework providing code quality tooling.
+
+#### Architecture
+
+```
+Claude Code
+├── Hooks (triggered on events)
+│   ├── PreToolUse  → agent-framework pre-tool-use.js
+│   ├── PostToolUse → agent-framework post-tool-use.js
+│   └── Stop        → agent-framework stop-off-topic-check.js
+│
+├── MCP Servers (callable tools)
+│   ├── agent-framework → check, confirm, commit
+│   ├── nixos-search    → NixOS package/option search
+│   ├── context7        → Documentation lookup
+│   └── tailwind-svelte → Frontend assistance
+│
+└── Environment
+    └── env.sh → Loads secrets (API keys, webhooks)
+```
+
+#### Claude Code Settings (`~/.claude/settings.json`)
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "alwaysThinkingEnabled": true,
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:nixos.org)",
+      "WebFetch(domain:tailwindcss.com)",
+      "WebFetch(domain:svelte.dev)",
+      "WebFetch(domain:tauri.app)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/pre-tool-use.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/post-tool-use.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-off-topic-check.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Environment Setup (`~/.claude/env.sh`)
+
+```bash
+#!/usr/bin/env bash
+# Shared environment setup for Claude Code hooks, MCP servers, and commands
+# Called via run-with-env.sh wrapper
+
+# Source API keys from SOPS secrets (with auto-export)
+if [[ -f /run/secrets/mcpToolboxENV ]]; then
+  set -a # Enable auto-export
+  source /run/secrets/mcpToolboxENV
+  set +a # Disable auto-export
+fi
+
+# Export webhook secrets for hook scripts
+if [[ -f /run/secrets/webhook_id_agent_logs ]]; then
+  export WEBHOOK_ID_AGENT_LOGS=$(cat /run/secrets/webhook_id_agent_logs)
+fi
+```
+
+#### Environment Wrapper (`~/.claude/run-with-env.sh`)
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname "$0")/env.sh"
+exec "$@"
+```
+
+#### Hook Scripts
+
+**`~/.claude/hooks/pre-tool-use.sh`**
+
+```bash
+#!/usr/bin/env bash
+exec "$(dirname "$0")/../run-with-env.sh" node /mnt/docker-data/volumes/mcp-toolbox/agent-framework/dist/hooks/pre-tool-use.js
+```
+
+**`~/.claude/hooks/post-tool-use.sh`**
+
+```bash
+#!/usr/bin/env bash
+exec "$(dirname "$0")/../run-with-env.sh" node /mnt/docker-data/volumes/mcp-toolbox/agent-framework/dist/hooks/post-tool-use.js
+```
+
+**`~/.claude/hooks/stop-off-topic-check.sh`**
+
+```bash
+#!/usr/bin/env bash
+exec "$(dirname "$0")/../run-with-env.sh" node /mnt/docker-data/volumes/mcp-toolbox/agent-framework/dist/hooks/stop-off-topic-check.js
+```
+
+#### NixOS Module (`services/mcp-toolbox.nix`)
 
 ```nix
-{ pkgs, ... }:
-
-let
-  # Paths - adjust these to your setup
-  dockerBin = "${pkgs.docker}/bin/docker";
-  claudeBin = "${pkgs.claude-code}/bin/claude";
-  mcpToolboxPath = "/path/to/mcp-server-host";  # Where this repo is cloned
-  serversPath = "${mcpToolboxPath}/servers";     # Volume-mounted servers directory
-in
 {
+  config,
+  pkgs,
+  inputs,
+  lib,
+  ...
+}: let
+  dockerBin = "${pkgs.docker}/bin/docker";
+  mcpToolboxImage =
+    if pkgs.stdenv.hostPlatform.system == "aarch64-linux"
+    then "ghcr.io/timlisemer/mcp-toolbox/mcp-toolbox-linux-arm64:latest"
+    else "ghcr.io/timlisemer/mcp-toolbox/mcp-toolbox-linux-amd64:latest";
+  unstable = import inputs.nixpkgs-unstable {
+    config = {allowUnfree = true;};
+    system = pkgs.stdenv.hostPlatform.system;
+  };
+in {
+  ##########################################################################
+  ## MCP Toolbox Docker Container                                         ##
+  ##########################################################################
+  virtualisation.oci-containers.containers.mcp-toolbox = {
+    image = mcpToolboxImage;
+    autoStart = true;
+
+    autoRemoveOnStop = true;
+    extraOptions = ["--network=docker-network" "--ip=172.18.0.15"];
+
+    volumes = [
+      "/mnt/docker-data/volumes/mcp-toolbox:/app/servers:rw"
+    ];
+
+    environmentFiles = [
+      "/run/secrets/mcpToolboxENV"
+    ];
+  };
+
+  ##########################################################################
+  ## MCP Toolbox volume permissions - make accessible to users            ##
+  ##########################################################################
+  systemd.services.mcp-toolbox-permissions = {
+    description = "Set permissions on mcp-toolbox volume for user access";
+    after = ["docker.service" "docker-mcp-toolbox.service"];
+    wantedBy = ["multi-user.target"];
+
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+
+    script = ''
+      set -euo pipefail
+
+      VOLUME_PATH="/mnt/docker-data/volumes/mcp-toolbox"
+
+      if [ -d "$VOLUME_PATH" ]; then
+        echo "Setting permissions on $VOLUME_PATH..."
+
+        # Set execute-only ACL on parent directories for traversal (no read access)
+        ${pkgs.acl}/bin/setfacl -m u:tim:x /mnt/docker-data
+        ${pkgs.acl}/bin/setfacl -m u:tim:x /mnt/docker-data/volumes
+
+        # Set full access on the volume directory and contents
+        ${pkgs.acl}/bin/setfacl -R -m u:tim:rwX "$VOLUME_PATH"
+        # Set default ACL so new files inherit permissions
+        ${pkgs.acl}/bin/setfacl -R -d -m u:tim:rwX "$VOLUME_PATH"
+
+        echo "MCP Toolbox volume permissions set successfully"
+      else
+        echo "Warning: $VOLUME_PATH does not exist yet"
+      fi
+    '';
+  };
+
+  ##########################################################################
+  ## Setup Claude MCP servers                                             ##
+  ##########################################################################
   system.activationScripts.claudeMcpSetup = {
     text = ''
       echo "[claude-mcp] Setting up MCP servers..."
 
-      # Run as your user since claude config is per-user
-      ${pkgs.sudo}/bin/sudo -u YOUR_USERNAME ${claudeBin} mcp list 2>/dev/null | \
-        ${pkgs.gawk}/bin/awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' | while read -r server; do
+      # Run as tim user since claude config is per-user
+      ${pkgs.sudo}/bin/sudo -u tim ${unstable.claude-code}/bin/claude mcp list 2>/dev/null | ${pkgs.gawk}/bin/awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' | while read -r server; do
         echo "[claude-mcp] Removing server: $server"
-        ${pkgs.sudo}/bin/sudo -u YOUR_USERNAME ${claudeBin} mcp remove --scope user "$server" 2>/dev/null || true
+        ${pkgs.sudo}/bin/sudo -u tim ${unstable.claude-code}/bin/claude mcp remove --scope user "$server" 2>/dev/null || true
       done
 
       echo "[claude-mcp] Adding nixos-search server..."
-      ${pkgs.sudo}/bin/sudo -u YOUR_USERNAME ${claudeBin} mcp add nixos-search --scope user -- \
-        ${dockerBin} exec -i mcp-toolbox sh -c 'exec 2>/dev/null; /app/tools/mcp-nixos/venv/bin/python3 -m mcp_nixos.server'
+      ${pkgs.sudo}/bin/sudo -u tim ${unstable.claude-code}/bin/claude mcp add nixos-search --scope user -- ${dockerBin} exec -i mcp-toolbox sh -c 'exec 2>/dev/null; /app/tools/mcp-nixos/venv/bin/python3 -m mcp_nixos.server'
 
       echo "[claude-mcp] Adding tailwind-svelte server..."
-      ${pkgs.sudo}/bin/sudo -u YOUR_USERNAME ${claudeBin} mcp add tailwind-svelte --scope user -- \
-        ${dockerBin} exec -i mcp-toolbox node /app/tools/tailwind-svelte-assistant/run.mjs
+      ${pkgs.sudo}/bin/sudo -u tim ${unstable.claude-code}/bin/claude mcp add tailwind-svelte --scope user -- ${dockerBin} exec -i mcp-toolbox node /app/tools/tailwind-svelte-assistant/run.mjs
 
       echo "[claude-mcp] Adding context7 server..."
-      ${pkgs.sudo}/bin/sudo -u YOUR_USERNAME ${claudeBin} mcp add context7 --scope user -- \
-        ${dockerBin} exec -i mcp-toolbox npx -y @upstash/context7-mcp
+      ${pkgs.sudo}/bin/sudo -u tim ${unstable.claude-code}/bin/claude mcp add context7 --scope user -- ${dockerBin} exec -i mcp-toolbox npx -y @upstash/context7-mcp
 
-      # agent-framework runs natively from the volume (docker_volume: true)
-      echo "[claude-mcp] Adding agent-framework server (native)..."
-      ${pkgs.sudo}/bin/sudo -u YOUR_USERNAME ${claudeBin} mcp add agent-framework --scope user -- \
-        ${pkgs.nodejs}/bin/node ${serversPath}/agent-framework/dist/mcp/server.js
+      echo "[claude-mcp] Adding agent-framework server..."
+      ${pkgs.sudo}/bin/sudo -u tim ${unstable.claude-code}/bin/claude mcp add agent-framework --scope user -- \
+        /home/tim/.claude/run-with-env.sh ${pkgs.nodejs}/bin/node /mnt/docker-data/volumes/mcp-toolbox/agent-framework/dist/mcp/server.js
+
 
       echo "[claude-mcp] MCP servers setup complete"
     '';
   };
+
+  ##########################################################################
+  ## Claude Code shared environment and hooks                             ##
+  ##########################################################################
+  home-manager.sharedModules = [
+    {
+      home.file = {
+        # Claude Code shared environment
+        ".claude/env.sh" = {
+          source = builtins.toPath ../files/.claude/env.sh;
+          executable = true;
+        };
+        ".claude/hooks/pre-tool-use.sh" = {
+          source = builtins.toPath ../files/.claude/hooks/pre-tool-use.sh;
+          executable = true;
+        };
+        ".claude/hooks/stop-off-topic-check.sh" = {
+          source = builtins.toPath ../files/.claude/hooks/stop-off-topic-check.sh;
+          executable = true;
+        };
+        ".claude/hooks/post-tool-use.sh" = {
+          source = builtins.toPath ../files/.claude/hooks/post-tool-use.sh;
+          executable = true;
+        };
+        ".claude/run-with-env.sh" = {
+          source = builtins.toPath ../files/.claude/run-with-env.sh;
+          executable = true;
+        };
+        # Claude Code commands
+        ".claude/commands/commit.md" = {
+          source = builtins.toPath ../files/.claude/commands/commit.md;
+        };
+        ".claude/commands/push.md" = {
+          source = builtins.toPath ../files/.claude/commands/push.md;
+        };
+      };
+    }
+  ];
 }
 ```
 
-**Key points:**
+#### Directory Structure
 
-- Replace `YOUR_USERNAME` with your actual username
-- Replace `/path/to/mcp-server-host` with the actual path to this repository
-- `agent-framework` runs natively from `servers/agent-framework/` since it has `docker_volume: true`
-- Other tools run via `docker exec` inside the container
+```
+~/.claude/
+├── env.sh                    # Environment variables (secrets)
+├── run-with-env.sh           # Wrapper that sources env.sh
+├── settings.json             # Claude Code settings + hooks
+├── hooks/
+│   ├── pre-tool-use.sh       # PreToolUse hook
+│   ├── post-tool-use.sh      # PostToolUse hook
+│   └── stop-off-topic-check.sh # Stop hook
+└── commands/
+    ├── commit.md             # /commit slash command
+    └── push.md               # /push slash command
+
+/mnt/docker-data/volumes/mcp-toolbox/agent-framework/
+└── dist/
+    ├── hooks/
+    │   ├── pre-tool-use.js
+    │   ├── post-tool-use.js
+    │   └── stop-off-topic-check.js
+    └── mcp/
+        └── server.js         # MCP server (check, confirm, commit tools)
+```
+
+#### How It Works
+
+1. NixOS rebuild deploys hook scripts to `~/.claude/` via home-manager
+2. Activation script registers MCP servers with `claude mcp add`
+3. Hooks load environment via `run-with-env.sh` -> `env.sh` before calling agent-framework JS
+4. MCP tools (check, confirm, commit) are available to Claude during conversations
+5. Secrets are loaded from SOPS-managed files at runtime
 
 ## Adding New Tools
 
