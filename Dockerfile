@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-venv \
     jq \
+    just \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20

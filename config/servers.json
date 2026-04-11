@@ -62,7 +62,7 @@
       "type": "node",
       "description": "AI-powered code quality agents: check, confirm, commit",
       "repository": "https://github.com/timlisemer/agent-framework",
-      "build_command": "npm install && npm run build",
+      "build_command": "npm install && just build",
       "binary_path": "dist/mcp/server.js",
       "install_path": "",
       "capabilities": ["code-quality", "linting", "git-commit", "code-review"],

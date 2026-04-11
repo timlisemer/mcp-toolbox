@@ -1,4 +1,4 @@
-.PHONY: help build run stop restart logs shell status clean rebuild test
+.PHONY: help build run stop restart logs shell status clean rebuild test check
 
 help:
 	@echo "MCP Toolbox - Commands"
@@ -48,6 +48,11 @@ test:
 	@echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}' | \
 		timeout 3 docker exec -i mcp-toolbox /app/tools/mcp-nixos/venv/bin/python3 -m mcp_nixos.server 2>/dev/null | head -1 || \
 		echo "  (tool responds to JSON-RPC input)"
+
+check:
+	@echo "Validating config..."
+	@jq empty config/servers.json && echo "config/servers.json: valid JSON"
+	@echo "Status: PASS"
 
 clean:
 	docker-compose down -v

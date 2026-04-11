@@ -480,6 +480,7 @@ make logs     # View container logs
 make shell    # Open container shell
 make status   # List available MCP tools
 make test     # Test MCP tools respond
+make check    # Validate config files
 make clean    # Remove container and image
 make rebuild  # Clean rebuild
 ```
