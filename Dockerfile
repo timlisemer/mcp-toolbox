@@ -1,35 +1,28 @@
 # MCP Toolbox - Pre-builds MCP tools for on-demand invocation
-FROM ubuntu:25.04
+FROM debian:trixie-slim
 
-# Install runtimes and build tools
-RUN apt-get update && apt-get install -y \
+# Install runtimes and build tools from Debian LTS-supported repositories.
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
     curl \
-    wget \
     git \
     build-essential \
     ca-certificates \
+    cargo \
+    golang-go \
+    jq \
+    just \
+    nodejs \
+    npm \
     python3 \
     python3-pip \
     python3-venv \
-    jq \
-    just \
+    rust-analyzer \
+    rust-src \
+    rustc \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js 20
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs
-
-# Install Go 1.21
-RUN wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz && \
-    rm go1.21.5.linux-amd64.tar.gz
-ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
 ENV GOPATH="/root/go"
-
-# Install Rust + rust-analyzer
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-RUN rustup component add rust-src rust-analyzer
 
 # Create directory structure
 WORKDIR /app

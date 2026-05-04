@@ -40,7 +40,10 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          pull: true
           tags: ghcr.io/${{ github.repository }}/mcp-toolbox-linux-amd64
+          cache-from: type=gha,scope=mcp-toolbox-linux-amd64
+          cache-to: type=gha,scope=mcp-toolbox-linux-amd64,mode=max
 
   build_arm64:
     if: ${{ inputs.build_toolbox }}
@@ -68,4 +71,7 @@ jobs:
           context: .
           platforms: linux/arm64
           push: true
+          pull: true
           tags: ghcr.io/${{ github.repository }}/mcp-toolbox-linux-arm64
+          cache-from: type=gha,scope=mcp-toolbox-linux-arm64
+          cache-to: type=gha,scope=mcp-toolbox-linux-arm64,mode=max
