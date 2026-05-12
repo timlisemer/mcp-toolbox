@@ -16,6 +16,12 @@ The container stays running so tools can be invoked via `docker exec`. MCP tools
 
 Tools with `docker_volume: true` are stored in the `servers/` directory on the host, allowing persistent data and native execution outside Docker.
 
+`agent-framework` is intentionally built through its own repo entrypoint:
+`npm install && just build`. The image includes `just`, and mcp-toolbox does not
+contain agent-framework-specific build logic. During `just build`,
+agent-framework compiles itself and regenerates Codex hook trust hashes in
+`adapters/codex/dotcodex/config.toml` from its own `hooks.json`.
+
 ## Available Tools
 
 | Tool                      | Type    | Description                                     |
@@ -38,6 +44,40 @@ make status
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
   docker exec -i mcp-toolbox /app/tools/mcp-nixos/venv/bin/python3 -m mcp_nixos.server
 ```
+
+## Deploying Agent Framework
+
+mcp-toolbox is the automated deployment path for agent-framework. At Docker
+build time it clones `timlisemer/agent-framework`, runs `npm install && just
+build`, and stores the built repo as a volume-enabled tool. At container start,
+the entrypoint refreshes `/app/servers/agent-framework`, which is normally
+mounted on the host at a path such as
+`/mnt/docker-data/volumes/mcp-toolbox/agent-framework`.
+
+Manual Linux deployment is still possible from an agent-framework checkout:
+
+```bash
+cd /path/to/agent-framework
+npm install
+just build
+cp -a adapters/claude/dotclaude/. ~/.claude/
+cp -a adapters/codex/dotcodex/. ~/.codex/
+```
+
+Linux symlink deployment keeps host-agent config pointed at the built checkout:
+
+```bash
+cd /path/to/agent-framework
+just build
+ln -sfn "$PWD/adapters/claude/dotclaude/settings.json" ~/.claude/settings.json
+ln -sfn "$PWD/adapters/codex/dotcodex/config.toml" ~/.codex/config.toml
+ln -sfn "$PWD/adapters/codex/dotcodex/hooks.json" ~/.codex/hooks.json
+```
+
+Codex hook hashes are generated review fingerprints. They tell Codex that the
+current hook commands in `hooks.json` have been reviewed and may run. They are
+not credentials, and they change when a hook command, matcher, timeout, async
+flag, or status message changes.
 
 ## Claude Code Configuration
 
