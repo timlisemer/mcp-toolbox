@@ -12,6 +12,7 @@ help:
 	@echo "  make shell    - Open container shell"
 	@echo "  make status   - List available MCP tools"
 	@echo "  make test     - Test MCP tools respond"
+	@echo "  make check    - Validate config files"
 	@echo "  make clean    - Remove container and image"
 	@echo "  make rebuild  - Clean rebuild"
 
