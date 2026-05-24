@@ -35,10 +35,10 @@ agent-framework compiles itself and regenerates Codex hook trust hashes in
 
 ```bash
 # Build and run
-make build && make run
+just build && just run
 
 # Check available tools
-make status
+just status
 
 # Test a tool
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
@@ -287,7 +287,7 @@ important details are:
 ## Adding New Tools
 
 1. Edit `config/servers.json` - add your tool definition
-2. Run `make rebuild`
+2. Run `just rebuild`
 
 ### Tool Configuration
 
@@ -342,7 +342,7 @@ Currently enabled for: `agent-framework`
 mcp-toolbox/
 ├── Dockerfile           # Build environment with Node/Python/Go/Rust
 ├── docker-compose.yml   # Container configuration
-├── Makefile             # Management commands
+├── justfile             # Management commands
 ├── config/
 │   └── servers.json     # Tool definitions
 ├── scripts/
@@ -355,17 +355,17 @@ mcp-toolbox/
 ## Commands
 
 ```bash
-make build    # Build Docker image
-make run      # Run container (foreground, Ctrl+C to stop)
-make stop     # Stop container
-make restart  # Restart container
-make logs     # View container logs
-make shell    # Open container shell
-make status   # List available MCP tools
-make test     # Test MCP tools respond
-make check    # Validate config files
-make clean    # Remove container and image
-make rebuild  # Clean rebuild
+just build    # Build Docker image
+just run      # Run container (foreground, Ctrl+C to stop)
+just stop     # Stop container
+just restart  # Restart container
+just logs     # View container logs
+just shell    # Open container shell
+just status   # List available MCP tools
+just test     # Test MCP tools respond
+just check    # Validate config files
+just clean    # Remove container and image
+just rebuild  # Clean rebuild
 ```
 
 ## Environment Variables
