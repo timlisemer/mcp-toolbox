@@ -24,6 +24,16 @@ while IFS= read -r tool_json; do
     echo "  Description: $description"
     echo "  Repository: $repo"
 
+    # Remote MCP servers are enabled client-side and do not have local build
+    # artifacts. Keep them in the catalog/status output without creating a
+    # misleading placeholder executable.
+    if [ "$type" = "remote" ]; then
+        url=$(echo "$value" | jq -r '.url')
+        echo "  Remote endpoint: $url"
+        echo "  No local build required for $name"
+        continue
+    fi
+
     # Create tool directory
     tool_dir="$TOOLS_DIR/$name"
     mkdir -p "$tool_dir"

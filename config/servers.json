@@ -56,6 +56,73 @@
         "NODE_ENV": "production"
       }
     },
+    "playwright": {
+      "enabled": true,
+      "docker_volume": false,
+      "type": "node",
+      "description": "Browser automation and page inspection using Playwright",
+      "repository": "https://github.com/microsoft/playwright-mcp",
+      "build_command": "npm ci --omit=dev && npx playwright-core install-deps chromium && npx playwright-core install --no-shell chromium",
+      "binary_path": "cli.js",
+      "install_path": "",
+      "capabilities": [
+        "browser-automation",
+        "accessibility",
+        "testing",
+        "screenshots"
+      ],
+      "default_args": [
+        "--headless",
+        "--browser",
+        "chromium",
+        "--no-sandbox"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
+        "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright"
+      }
+    },
+    "figma": {
+      "enabled": true,
+      "docker_volume": false,
+      "type": "remote",
+      "description": "Official Figma design context and code generation MCP server",
+      "repository": "https://github.com/figma/mcp-server-guide",
+      "build_command": "",
+      "binary_path": "",
+      "install_path": "",
+      "transport": "http",
+      "url": "https://mcp.figma.com/mcp",
+      "capabilities": [
+        "design-context",
+        "code-generation",
+        "design-systems",
+        "assets"
+      ],
+      "default_args": [],
+      "environment": {}
+    },
+    "blender": {
+      "enabled": true,
+      "docker_volume": false,
+      "type": "python",
+      "description": "Blender scene creation, inspection, rendering, and asset integration",
+      "repository": "https://github.com/ahujasid/blender-mcp",
+      "build_command": "pip3 install -e .",
+      "binary_path": "venv/bin/blender-mcp",
+      "install_path": "venv/bin/blender-mcp",
+      "capabilities": [
+        "3d-modeling",
+        "scene-inspection",
+        "rendering",
+        "assets"
+      ],
+      "default_args": [],
+      "environment": {
+        "BLENDER_HOST": "host.docker.internal",
+        "BLENDER_PORT": "9876"
+      }
+    },
     "agent-framework": {
       "enabled": true,
       "docker_volume": true,

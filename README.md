@@ -7,10 +7,10 @@ A Docker container that downloads and pre-builds MCP (Model Context Protocol) se
 During image build, the container:
 
 1. Reads tool definitions from `config/servers.json`
-2. Clones each tool's repository from GitHub
-3. Installs dependencies (npm, pip, cargo, go modules)
-4. Builds/compiles each tool
-5. Packages everything at `/app/tools/<tool-name>/`
+2. Records remote HTTP MCP servers without creating local placeholders
+3. Clones each local tool's repository from GitHub
+4. Installs dependencies (npm, pip, cargo, go modules)
+5. Builds/compiles each local tool at `/app/tools/<tool-name>/`
 
 The container stays running so tools can be invoked via `docker exec`. MCP tools use **stdio transport** - they read JSON-RPC from stdin and write to stdout, so each invocation is a fresh process (no persistent daemons).
 
@@ -29,6 +29,9 @@ agent-framework compiles itself and regenerates Codex hook trust hashes in
 | mcp-nixos                 | Python  | NixOS package and configuration search          |
 | tailwind-svelte-assistant | Node.js | Tailwind CSS and SvelteKit documentation        |
 | context7                  | Node.js | Up-to-date code documentation for any library   |
+| playwright                | Node.js | Browser automation and page inspection          |
+| figma                     | Remote  | Official Figma design context and code generation |
+| blender                   | Python  | Blender scene creation, inspection, and rendering |
 | agent-framework           | Node.js | AI-powered code quality: check, confirm, commit |
 
 ## Quick Start
@@ -88,6 +91,11 @@ Register the pre-built tools with Claude Code using `claude mcp add`:
 claude mcp add nixos-search -- docker exec -i mcp-toolbox /app/tools/mcp-nixos/venv/bin/python3 -m mcp_nixos.server
 claude mcp add tailwind-svelte -- docker exec -i mcp-toolbox node /app/tools/tailwind-svelte-assistant/run.mjs
 claude mcp add context7 -- docker exec -i mcp-toolbox npx -y @upstash/context7-mcp
+claude mcp add playwright -- docker exec -i mcp-toolbox node /app/tools/playwright/cli.js --headless --browser chromium --no-sandbox
+claude mcp add blender -- docker exec -i mcp-toolbox /app/tools/blender/venv/bin/blender-mcp
+
+# Figma is an official remote MCP server; connect the client directly.
+claude mcp add --transport http figma https://mcp.figma.com/mcp
 
 # agent-framework can run natively from the volume (docker_volume: true)
 claude mcp add agent-framework -- node /path/to/mcp-toolbox/agent-framework/dist/src/mcp/server.js
@@ -121,10 +129,59 @@ Or add to your Claude Code MCP settings (`~/.claude/settings.json`):
         "-y",
         "@upstash/context7-mcp"
       ]
+    },
+    "playwright": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "mcp-toolbox",
+        "node",
+        "/app/tools/playwright/cli.js",
+        "--headless",
+        "--browser",
+        "chromium",
+        "--no-sandbox"
+      ]
+    },
+    "figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "blender": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "mcp-toolbox",
+        "/app/tools/blender/venv/bin/blender-mcp"
+      ]
     }
   }
 }
 ```
+
+### Figma Authentication
+
+Figma handles authentication through the MCP client. After registering the
+remote server, open the client's MCP management UI and authenticate the
+`figma` connection. No Figma access token is stored in this image.
+
+### Blender Add-on
+
+Blender MCP requires its companion add-on to be installed and running in
+Blender. Copy the add-on from the built container, install it through
+**Blender > Edit > Preferences > Add-ons**, enable **Interface: Blender MCP**,
+then click **Connect to Claude** in the BlenderMCP sidebar:
+
+```bash
+docker cp mcp-toolbox:/app/tools/blender/addon.py ./blender-mcp-addon.py
+```
+
+The container connects to the host on port `9876` through
+`host.docker.internal`. Override `BLENDER_HOST` or `BLENDER_PORT` in `.env` if
+Blender runs elsewhere. Blender MCP can execute Python in Blender, so only use
+it with MCP clients and prompts you trust.
 
 ### NixOS Integration Pattern
 
@@ -263,6 +320,12 @@ in {
             ${dockerBin} exec -i mcp-toolbox node /app/tools/tailwind-svelte-assistant/run.mjs >/dev/null 2>&1 || true
           ${pkgs.sudo}/bin/sudo -u ${username} "$claudeBin" mcp add context7 --scope user -- \
             ${dockerBin} exec -i mcp-toolbox npx -y @upstash/context7-mcp >/dev/null 2>&1 || true
+          ${pkgs.sudo}/bin/sudo -u ${username} "$claudeBin" mcp add playwright --scope user -- \
+            ${dockerBin} exec -i mcp-toolbox node /app/tools/playwright/cli.js --headless --browser chromium --no-sandbox >/dev/null 2>&1 || true
+          ${pkgs.sudo}/bin/sudo -u ${username} "$claudeBin" mcp add figma --scope user --transport http \
+            https://mcp.figma.com/mcp >/dev/null 2>&1 || true
+          ${pkgs.sudo}/bin/sudo -u ${username} "$claudeBin" mcp add blender --scope user -- \
+            ${dockerBin} exec -i mcp-toolbox /app/tools/blender/venv/bin/blender-mcp >/dev/null 2>&1 || true
           ${pkgs.sudo}/bin/sudo -u ${username} "$claudeBin" mcp add agent-framework --scope user -- \
             ${pkgs.nodejs}/bin/node ${volumeRoot}/agent-framework/dist/src/mcp/server.js >/dev/null 2>&1 || true
         fi
@@ -279,9 +342,10 @@ important details are:
 1. Mount one persistent host directory to `/app/servers`.
 2. Grant the interactive users read/write access to that host directory.
 3. Register Docker-backed servers for tools that run inside the container.
-4. Register `agent-framework` natively from the volume at
+4. Register remote HTTP servers such as Figma directly with the MCP client.
+5. Register `agent-framework` natively from the volume at
    `agent-framework/dist/src/mcp/server.js`.
-5. Link or copy the adapter-owned Claude and Codex config from
+6. Link or copy the adapter-owned Claude and Codex config from
    `agent-framework/adapters/*`.
 
 ## Adding New Tools
@@ -314,10 +378,12 @@ important details are:
 | --------------- | ------- | ----------------------------------------------------------------------- |
 | `enabled`       | boolean | Whether to build and enable this tool                                   |
 | `docker_volume` | boolean | If `true`, tool data persists in `servers/<name>/` and can run natively |
-| `type`          | string  | Runtime type: `node`, `python`, `go`, `rust`                            |
+| `type`          | string  | Runtime type: `node`, `python`, `go`, `rust`, or `remote`               |
 | `repository`    | string  | Git repository URL to clone                                             |
 | `build_command` | string  | Command to build the tool after cloning                                 |
 | `binary_path`   | string  | Path to the executable relative to tool directory                       |
+| `transport`     | string  | Transport used by a remote server, such as `http`                       |
+| `url`           | string  | Endpoint for a remote server; remote entries are not built locally      |
 | `capabilities`  | array   | List of tool capabilities (documentation only)                          |
 
 ### Docker Volume Feature

@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rustc \
     && rm -rf /var/lib/apt/lists/*
 ENV GOPATH="/root/go"
+ENV PLAYWRIGHT_BROWSERS_PATH="/ms-playwright"
 
 # Create directory structure
 WORKDIR /app
