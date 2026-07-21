@@ -180,8 +180,11 @@ docker cp mcp-toolbox:/app/tools/blender/addon.py ./blender-mcp-addon.py
 
 The container connects to the host on port `9876` through
 `host.docker.internal`. Override `BLENDER_HOST` or `BLENDER_PORT` in `.env` if
-Blender runs elsewhere. Blender MCP can execute Python in Blender, so only use
-it with MCP clients and prompts you trust.
+Blender runs elsewhere. The MCP server itself starts and lists its tools even
+when Blender is unavailable; it connects to Blender lazily when a tool is
+called. Blender and the add-on are therefore required to use the tools, but not
+to initialize the MCP connection. Blender MCP can execute Python in Blender, so
+only use it with MCP clients and prompts you trust.
 
 ### NixOS Integration Pattern
 
@@ -381,6 +384,7 @@ important details are:
 | `type`          | string  | Runtime type: `node`, `python`, `go`, `rust`, or `remote`               |
 | `repository`    | string  | Git repository URL to clone                                             |
 | `build_command` | string  | Command to build the tool after cloning                                 |
+| `patches`       | array   | Patch files from `patches/` to apply before building                    |
 | `binary_path`   | string  | Path to the executable relative to tool directory                       |
 | `transport`     | string  | Transport used by a remote server, such as `http`                       |
 | `url`           | string  | Endpoint for a remote server; remote entries are not built locally      |

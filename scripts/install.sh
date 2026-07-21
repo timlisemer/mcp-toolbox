@@ -18,6 +18,7 @@ while IFS= read -r tool_json; do
     repo=$(echo "$value" | jq -r '.repository')
     build_cmd=$(echo "$value" | jq -r '.build_command')
     description=$(echo "$value" | jq -r '.description')
+    patches=$(echo "$value" | jq -r '.patches[]?')
 
     echo ""
     echo "Building $name ($type)..."
@@ -63,6 +64,25 @@ while IFS= read -r tool_json; do
             ;;
         esac
     fi
+
+    # Apply repository-specific compatibility fixes before dependencies are
+    # installed. Patches deliberately fail the image build when upstream code
+    # changes, so an outdated fix cannot be silently omitted.
+    while IFS= read -r patch_name; do
+        if [ -z "$patch_name" ]; then
+            continue
+        fi
+
+        patch_file="/app/patches/$patch_name"
+        if [ ! -f "$patch_file" ]; then
+            echo "  Error: Patch not found: $patch_file" >&2
+            exit 1
+        fi
+
+        echo "  Applying patch: $patch_name"
+        git apply --check "$patch_file"
+        git apply "$patch_file"
+    done <<< "$patches"
 
     # Build based on type
     echo "  Compiling..."

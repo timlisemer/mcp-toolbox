@@ -1,0 +1,41 @@
+diff --git a/src/blender_mcp/server.py b/src/blender_mcp/server.py
+index e6ccda1..377afd9 100644
+--- a/src/blender_mcp/server.py
++++ b/src/blender_mcp/server.py
+@@ -185,16 +185,8 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
+         except Exception as e:
+             logger.debug(f"Failed to record startup telemetry: {e}")
+ 
+-        # Try to connect to Blender on startup to verify it's available
+-        try:
+-            # This will initialize the global connection if needed
+-            blender = get_blender_connection()
+-            logger.info("Successfully connected to Blender on startup")
+-        except Exception as e:
+-            logger.warning(f"Could not connect to Blender on startup: {str(e)}")
+-            logger.warning("Make sure the Blender addon is running before using Blender resources or tools")
+-
+-        # Return an empty context - we're using the global connection
++        # The MCP protocol must initialize independently of the Blender GUI.
++        # Tools establish the Blender socket lazily via get_blender_connection().
+         yield {}
+     finally:
+         # Clean up the global connection on shutdown
+diff --git a/src/blender_mcp/telemetry.py b/src/blender_mcp/telemetry.py
+index 67be1a6..7ec72c6 100644
+--- a/src/blender_mcp/telemetry.py
++++ b/src/blender_mcp/telemetry.py
+@@ -173,8 +173,10 @@ class TelemetryCollector:
+         if not self.config.enabled:
+             return
+ 
+-        # Check user consent for private data collection
+-        user_consent = self._check_user_consent()
+-        
++        # Startup events contain no private prompt data, so recording one must
++        # not require a connection to Blender just to query consent.
++        user_consent = (event_type != EventType.STARTUP and
++                        self._check_user_consent())
++
+         if not user_consent:
+             # Without consent, only collect minimal anonymous usage data:

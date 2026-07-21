@@ -109,6 +109,7 @@
       "description": "Blender scene creation, inspection, rendering, and asset integration",
       "repository": "https://github.com/ahujasid/blender-mcp",
       "build_command": "pip3 install -e .",
+      "patches": ["blender-mcp-lazy-connect.patch"],
       "binary_path": "venv/bin/blender-mcp",
       "install_path": "venv/bin/blender-mcp",
       "capabilities": [

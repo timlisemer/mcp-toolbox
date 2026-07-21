@@ -31,6 +31,7 @@ RUN mkdir -p /app/tools /app/tools-builtin /app/servers /app/config
 
 # Copy configuration and build scripts
 COPY config/ /app/config/
+COPY patches/ /app/patches/
 COPY scripts/install.sh /app/scripts/
 COPY scripts/entrypoint.sh /app/scripts/
 RUN chmod +x /app/scripts/*.sh
