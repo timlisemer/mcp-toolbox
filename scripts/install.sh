@@ -17,6 +17,8 @@ while IFS= read -r tool_json; do
     type=$(echo "$value" | jq -r '.type')
     repo=$(echo "$value" | jq -r '.repository')
     build_cmd=$(echo "$value" | jq -r '.build_command')
+    binary_path=$(echo "$value" | jq -r '.binary_path')
+    private_repository=$(echo "$value" | jq -r '.private_repository // false')
     description=$(echo "$value" | jq -r '.description')
     patches=$(echo "$value" | jq -r '.patches[]?')
 
@@ -42,11 +44,24 @@ while IFS= read -r tool_json; do
 
     # Clone repository if it exists and is valid
     if [[ "$repo" == http* ]]; then
-        if git ls-remote "$repo" &>/dev/null; then
-            git clone --depth 1 "$repo" . 2>/dev/null || echo "  Using cached repository"
-        else
-            echo "  Warning: Repository not accessible, skipping $name"
-            continue
+        git_auth_args=()
+        if [ "$private_repository" = "true" ]; then
+            github_token_file="${MCP_GITHUB_TOKEN_FILE:-/run/secrets/github_token}"
+            if [ ! -s "$github_token_file" ]; then
+                echo "  Error: $name requires the BuildKit secret 'github_token'" >&2
+                exit 1
+            fi
+            github_basic_auth=$(printf 'x-access-token:%s' "$(<"$github_token_file")" | base64 -w 0)
+            git_auth_args=(-c "http.https://github.com/.extraheader=Authorization: Basic $github_basic_auth")
+        fi
+
+        if ! git "${git_auth_args[@]}" ls-remote "$repo" &>/dev/null; then
+            echo "  Error: Repository not accessible: $repo" >&2
+            exit 1
+        fi
+        if ! git "${git_auth_args[@]}" clone --depth 1 "$repo" . 2>/dev/null; then
+            echo "  Error: Failed to clone repository: $repo" >&2
+            exit 1
         fi
     else
         echo "  Info: No valid repository URL, creating placeholder for $name"
@@ -94,7 +109,11 @@ while IFS= read -r tool_json; do
         ;;
     "rust")
         if [ -f "Cargo.toml" ]; then
-            eval "$build_cmd" || echo "  Build skipped (placeholder)"
+            eval "$build_cmd"
+            if [ -n "$binary_path" ] && [ ! -x "$binary_path" ]; then
+                echo "  Error: Rust binary is missing or not executable: $tool_dir/$binary_path" >&2
+                exit 1
+            fi
         fi
         ;;
     "node")
@@ -144,19 +163,6 @@ echo "All MCP tools built successfully!"
 echo "Tools directory: $TOOLS_DIR"
 ls -la "$TOOLS_DIR" 2>/dev/null || true
 
-# Move volume-enabled tools to builtin directory for runtime initialization
-echo ""
-echo "Processing volume-enabled tools..."
-BUILTIN_DIR="/app/tools-builtin"
-mkdir -p "$BUILTIN_DIR"
-
-volume_tools=$(jq -r '.tools | to_entries[] | select(.value.enabled == true and .value.docker_volume == true) | .key' "$CONFIG_FILE")
-
-while IFS= read -r name; do
-    if [ -n "$name" ] && [ -d "$TOOLS_DIR/$name" ]; then
-        echo "  Moving $name to builtin directory for volume support..."
-        mv "$TOOLS_DIR/$name" "$BUILTIN_DIR/$name"
-    fi
-done <<< "$volume_tools"
-
-echo "Volume-enabled tools prepared for runtime initialization"
+# Cargo's downloaded sources are build-only inputs. The retained Rust tools
+# contain their release artifacts under /app/tools.
+rm -rf /usr/local/cargo/git /usr/local/cargo/registry

@@ -5,14 +5,11 @@ services:
     container_name: mcp-toolbox
     restart: unless-stopped
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - BLENDER_HOST=${BLENDER_HOST:-host.docker.internal}
       - BLENDER_PORT=${BLENDER_PORT:-9876}
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ./servers:/app/servers
     logging:
       driver: "json-file"
       options:

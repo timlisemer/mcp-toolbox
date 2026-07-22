@@ -56,6 +56,13 @@ test:
         'import sys, types; config = types.ModuleType("blender_mcp.config"); config.telemetry_config = types.SimpleNamespace(enabled=True); sys.modules["blender_mcp.config"] = config; from unittest.mock import Mock; from blender_mcp import server; from blender_mcp.telemetry import TelemetryCollector; TelemetryCollector._send_event = lambda self, event: None; probe = Mock(side_effect=RuntimeError("startup must not connect to Blender")); server.BlenderConnection.connect = probe; server.main(); raise SystemExit(1 if probe.called else 0)'); \
         printf '%s\n' "$response" | jq -e 'select(.id == 1 and .result.serverInfo.name == "BlenderMCP")' >/dev/null; \
         echo "  PASS"
+    @echo ""
+    @echo "agent-framework-rs release bundle:"
+    @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-mcp
+    @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-mcp
+    @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
+    @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
+    @echo "  PASS"
 
 check:
     @echo "Validating config..."
@@ -63,7 +70,7 @@ check:
     @for patch in $(jq -r '.tools[].patches[]?' config/servers.json); do \
         test -f "patches/$patch" || { echo "Missing patch: patches/$patch" >&2; exit 1; }; \
         done
-    @bash -n scripts/install.sh scripts/entrypoint.sh
+    @bash -n scripts/install.sh
     @echo "Status: PASS"
 
 clean:

@@ -2,7 +2,6 @@
   "tools": {
     "mcp-nixos": {
       "enabled": true,
-      "docker_volume": false,
       "type": "python",
       "description": "NixOS package and configuration search MCP server",
       "repository": "https://github.com/utensils/mcp-nixos",
@@ -17,7 +16,6 @@
     },
     "tailwind-svelte-assistant": {
       "enabled": true,
-      "docker_volume": false,
       "type": "node",
       "description": "Tailwind CSS and SvelteKit documentation and code snippets MCP server",
       "repository": "https://github.com/CaullenOmdahl/Tailwind-Svelte-Assistant",
@@ -38,7 +36,6 @@
     },
     "context7": {
       "enabled": true,
-      "docker_volume": false,
       "type": "node",
       "description": "Up-to-date code documentation for LLMs and AI code editors",
       "repository": "",
@@ -58,7 +55,6 @@
     },
     "playwright": {
       "enabled": true,
-      "docker_volume": false,
       "type": "node",
       "description": "Browser automation and page inspection using Playwright",
       "repository": "https://github.com/microsoft/playwright-mcp",
@@ -84,7 +80,6 @@
     },
     "figma": {
       "enabled": true,
-      "docker_volume": false,
       "type": "remote",
       "description": "Official Figma design context and code generation MCP server",
       "repository": "https://github.com/figma/mcp-server-guide",
@@ -104,7 +99,6 @@
     },
     "blender": {
       "enabled": true,
-      "docker_volume": false,
       "type": "python",
       "description": "Blender scene creation, inspection, rendering, and asset integration",
       "repository": "https://github.com/ahujasid/blender-mcp",
@@ -126,18 +120,22 @@
     },
     "agent-framework": {
       "enabled": true,
-      "docker_volume": true,
-      "type": "node",
-      "description": "AI-powered code quality agents: check, confirm, commit",
-      "repository": "https://github.com/timlisemer/agent-framework",
-      "build_command": "npm install && just build",
-      "binary_path": "dist/src/mcp/server.js",
-      "install_path": "",
-      "capabilities": ["code-quality", "linting", "git-commit", "code-review"],
+      "type": "rust",
+      "description": "Native agent workflows for checking, planning, implementation, review, and Git operations",
+      "repository": "https://github.com/timlisemer/agent-framework-rs",
+      "private_repository": true,
+      "build_command": "CARGO_INCREMENTAL=0 cargo build --release --locked --package agent-framework-mcp && CARGO_INCREMENTAL=0 cargo build --release --locked --package unified-agent-sdk --features codex --bin agent-framework-tool-policy-hook && mkdir -p bin && install -m 755 target/release/agent-framework-mcp bin/agent-framework-mcp && install -m 755 target/release/agent-framework-tool-policy-hook bin/agent-framework-tool-policy-hook && rm -rf .git crates target Cargo.lock Cargo.toml justfile",
+      "binary_path": "bin/agent-framework-mcp",
+      "install_path": "bin/agent-framework-mcp",
+      "capabilities": [
+        "code-quality",
+        "planning",
+        "implementation",
+        "code-review",
+        "git-operations"
+      ],
       "default_args": [],
-      "environment": {
-        "NODE_ENV": "production"
-      }
+      "environment": {}
     }
   }
 }
