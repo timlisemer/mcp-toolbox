@@ -99,9 +99,11 @@ The image retains exactly two release executables:
 ```
 
 `agent-framework-mcp` is the stdio MCP server.
-`agent-framework-tool-policy-hook` is the request-scoped Codex policy hook. The
-server discovers it next to its own executable. Both files must therefore be
-installed together as regular executable files; do not symlink either one.
+`agent-framework-tool-policy-hook` is the provider hook policy host. The MCP
+server discovers it next to its own executable for request-scoped
+agent-framework workflows. For top-level Claude and Codex sessions, the host
+generates the corresponding per-user settings and hook files. Both executables
+must remain regular sibling files.
 
 Unlike the other local servers, agent-framework must run on the host. Its
 workflows inspect host repositories and launch the host's authenticated
@@ -148,12 +150,15 @@ A declarative NixOS deployment should:
    user.
 4. Register `agent-framework-mcp` as a host-native MCP server with the correct
    `AGENT_FRAMEWORK_ADAPTER` value.
-5. Keep the host's `claude`, `codex`, credentials, and repository paths
+5. Copy the host-generated Claude settings and Codex hook definition into each
+   user's home as regular, user-owned files. Replace them on every rebuild but
+   leave them mutable between rebuilds. Generate the matching Codex hook trust
+   state in the user's writable `config.toml`.
+6. Keep the host's `claude`, `codex`, credentials, and repository paths
    available through the normal user environment.
 
-No agent-framework `.env`, `AGENT_FRAMEWORK_ROOT`, adapter config, global hook
-file, command directory, skill directory, agent directory, or symlink is
-required.
+No agent-framework `.env`, command directory, skill directory, or agent
+directory is required.
 
 ## Blender add-on
 
