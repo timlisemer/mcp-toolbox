@@ -104,7 +104,7 @@ while IFS= read -r tool_json; do
     case "$type" in
     "go")
         if [ -f "go.mod" ] || [ -f "main.go" ]; then
-            eval "$build_cmd" || echo "  Build skipped (placeholder)"
+            eval "$build_cmd"
         fi
         ;;
     "rust")
@@ -118,7 +118,7 @@ while IFS= read -r tool_json; do
         ;;
     "node")
         if [ -f "package.json" ]; then
-            eval "$build_cmd" || echo "  Build failed"
+            eval "$build_cmd"
         fi
         # Create stdio wrapper for Smithery-based servers
         if [ "$name" = "tailwind-svelte-assistant" ]; then
@@ -136,19 +136,19 @@ RUNNER_EOF
     "python")
         # Create and activate virtual environment for this tool
         echo "  Creating virtual environment..."
-        python3 -m venv venv
+        virtualenv venv
         source venv/bin/activate
 
         if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt || echo "  Dependencies skipped"
+            pip install -r requirements.txt
         fi
         # Execute the build command for Python tools (e.g., pip install)
         if [[ "$build_cmd" == pip* ]]; then
             # Replace pip3 with pip in venv
             venv_build_cmd="${build_cmd/pip3/pip}"
-            eval "$venv_build_cmd" || echo "  Build command failed: $venv_build_cmd"
+            eval "$venv_build_cmd"
         elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
-            pip install -e . || echo "  Local install failed"
+            pip install -e .
         fi
         deactivate
         ;;
@@ -162,7 +162,3 @@ echo ""
 echo "All MCP tools built successfully!"
 echo "Tools directory: $TOOLS_DIR"
 ls -la "$TOOLS_DIR" 2>/dev/null || true
-
-# Cargo's downloaded sources are build-only inputs. The retained Rust tools
-# contain their release artifacts under /app/tools.
-rm -rf /usr/local/cargo/git /usr/local/cargo/registry

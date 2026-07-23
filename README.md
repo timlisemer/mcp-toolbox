@@ -16,6 +16,14 @@ During the image build, the toolbox:
 The container stays alive so container-native stdio servers can be started with
 `docker exec`. Remote servers are connected directly by the MCP client.
 
+## Build environment
+
+The toolbox is based on the multi-architecture
+`ghcr.io/timlisemer/nixos-ci:latest` image published by the NixOS configuration
+repository. Rust, Go, Node.js, Python, native libraries, and development
+environment paths therefore come from the same declarations as the normal
+NixOS workstations instead of a separate Debian package list.
+
 ## Available tools
 
 | Tool | Type | Description |

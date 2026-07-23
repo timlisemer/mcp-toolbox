@@ -1,0 +1,91 @@
+diff --git a/src/index.ts b/src/index.ts
+index 6dc6a26..937612f 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -44,7 +44,11 @@ export default function createServer() {
+     async () => {
+       const content = await fileService.readFullDocsFile(CONFIG.svelteFullDocsPath);
+       return {
+-        text: content
++        contents: [{
++          uri: "docs://svelte-sveltekit-full",
++          mimeType: "text/plain",
++          text: content
++        }]
+       };
+     }
+   );
+@@ -59,7 +63,11 @@ export default function createServer() {
+     async () => {
+       const content = await fileService.readFullDocsFile(CONFIG.tailwindFullDocsPath);
+       return {
+-        text: content
++        contents: [{
++          uri: "docs://tailwind-docs-full",
++          mimeType: "text/plain",
++          text: content
++        }]
+       };
+     }
+   );
+@@ -75,14 +83,22 @@ export default function createServer() {
+       try {
+         const content = await fileService.readFullDocsFile(summaryPath);
+         return {
+-          text: content
++          contents: [{
++            uri: "docs://content-summary",
++            mimeType: "application/json",
++            text: content
++          }]
+         };
+       } catch (error) {
+         return {
+-          text: JSON.stringify({
+-            error: "Content summary not available",
+-            message: "Run 'npm run update-content' to generate summary"
+-          }, null, 2)
++          contents: [{
++            uri: "docs://content-summary",
++            mimeType: "application/json",
++            text: JSON.stringify({
++              error: "Content summary not available",
++              message: "Run 'npm run update-content' to generate summary"
++            }, null, 2)
++          }]
+         };
+       }
+     }
+@@ -94,7 +110,7 @@ export default function createServer() {
+     {
+       title: "Search Svelte Routing Documentation",
+       description: "Search the complete Svelte documentation for routing information",
+-      arguments: []
++      argsSchema: {}
+     },
+     async () => ({
+       messages: [{
+@@ -112,7 +128,7 @@ export default function createServer() {
+     {
+       title: "Get Tailwind CSS Utilities",
+       description: "Get complete Tailwind CSS utility documentation",
+-      arguments: []
++      argsSchema: {}
+     },
+     async () => ({
+       messages: [{
+@@ -130,11 +146,9 @@ export default function createServer() {
+     {
+       title: "Find Component Snippet",
+       description: "Browse and find Svelte component code snippets",
+-      arguments: [{
+-        name: "category",
+-        description: "Component category (e.g., 'headers', 'heroes', 'forms')",
+-        required: false
+-      }]
++      argsSchema: {
++        category: z.string().optional().describe("Component category (e.g., 'headers', 'heroes', 'forms')")
++      }
+     },
+     async (args) => ({
+       messages: [{

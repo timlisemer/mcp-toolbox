@@ -1,29 +1,10 @@
 # syntax=docker/dockerfile:1
 # MCP Toolbox - Pre-builds MCP tools for on-demand invocation
-# agent-framework-rs requires Rust 1.95; Debian Trixie's rustc is only 1.85.
-FROM rust:1.95-slim-trixie
+ARG NIXOS_CI_IMAGE=ghcr.io/timlisemer/nixos-ci:latest
+FROM ${NIXOS_CI_IMAGE}
 
-# Install runtimes and build tools from Debian LTS-supported repositories.
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash \
-    clang \
-    cmake \
-    curl \
-    git \
-    build-essential \
-    ca-certificates \
-    golang-go \
-    jq \
-    libclang-dev \
-    libssl-dev \
-    nodejs \
-    npm \
-    pkg-config \
-    python3 \
-    python3-pip \
-    python3-venv \
-    && rm -rf /var/lib/apt/lists/*
+SHELL ["/run/current-system/sw/bin/bash", "-c"]
+
 ENV GOPATH="/root/go"
 ENV PLAYWRIGHT_BROWSERS_PATH="/ms-playwright"
 
@@ -39,7 +20,11 @@ RUN chmod +x /app/scripts/*.sh
 
 # Pre-build all MCP tools. The optional BuildKit secret provides read-only
 # access to private repositories without persisting credentials in a layer.
-RUN --mount=type=secret,id=github_token /app/scripts/install.sh
+RUN --mount=type=secret,id=github_token \
+    --mount=type=cache,id=mcp-toolbox-cargo-git,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,id=mcp-toolbox-cargo-registry,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,id=mcp-toolbox-cargo-target,target=/app/cargo-target,sharing=locked \
+    CARGO_TARGET_DIR=/app/cargo-target /run/current-system/sw/bin/bash /app/scripts/install.sh
 
 # Stay alive for docker exec access - tools are invoked on-demand
-CMD ["tail", "-f", "/dev/null"]
+CMD ["/run/current-system/sw/bin/tail", "-f", "/dev/null"]
