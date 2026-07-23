@@ -98,20 +98,30 @@ docker build \
   -t mcp-toolbox:latest .
 ```
 
-The image retains exactly two release executables:
+The image retains the two release executables and the canonical,
+adapter-independent skill bundle:
 
 ```text
-/app/tools/agent-framework/bin/
-├── agent-framework-mcp
-└── agent-framework-tool-policy-hook
+/app/tools/agent-framework/
+├── bin/
+│   ├── agent-framework-mcp
+│   └── agent-framework-tool-policy-hook
+└── skills/
+    └── agent-framework-*/
+        └── SKILL.md
 ```
+
+`workspace-quality generate` produces every `SKILL.md` from one Rust-owned
+inventory. There are no separate Claude and Codex copies to drift apart; both
+clients receive the same generated files.
 
 `agent-framework-mcp` is the stdio MCP server.
 `agent-framework-tool-policy-hook` is the provider hook policy host. The MCP
 server discovers it next to its own executable for request-scoped
 agent-framework workflows. For top-level Claude and Codex sessions, the host
-generates the corresponding per-user settings and hook files. Both executables
-must remain regular sibling files.
+generates the corresponding per-user settings and hook files, and copies the
+same skill bundle into both clients. Both executables and every skill artifact
+must remain regular files; the deployment does not use symlinks.
 
 Unlike the other local servers, agent-framework must run on the host. Its
 workflows inspect host repositories and launch the host's authenticated
@@ -121,9 +131,11 @@ the repositories, client executables, configuration, and credentials it needs.
 Copy the bundle from a running toolbox container to a host-owned directory:
 
 ```bash
-mkdir -p /path/to/agent-framework/bin
+mkdir -p /path/to/agent-framework/bin /path/to/agent-framework/skills
 docker cp mcp-toolbox:/app/tools/agent-framework/bin/. \
   /path/to/agent-framework/bin/
+docker cp mcp-toolbox:/app/tools/agent-framework/skills/. \
+  /path/to/agent-framework/skills/
 chmod 755 /path/to/agent-framework/bin/agent-framework-*
 ```
 
@@ -153,19 +165,23 @@ The MCP wire names remain `check`, `validate_plan`, `create_planfile`,
 A declarative NixOS deployment should:
 
 1. Start the toolbox container without a persistent agent-framework volume.
-2. Copy both release executables from the image into a host directory.
-3. Ensure the copied files are regular, executable, and owned by the target
-   user.
+2. Copy both release executables and the canonical skill bundle from the image
+   into a host directory.
+3. Ensure the copied executables are regular and executable, and reject any
+   symlink in the skill bundle.
 4. Register `agent-framework-mcp` as a host-native MCP server with the correct
    `AGENT_FRAMEWORK_ADAPTER` value.
 5. Copy the host-generated Claude settings and Codex hook definition into each
    user's home as regular, user-owned files. Replace them on every rebuild but
    leave them mutable between rebuilds. Generate the matching Codex hook trust
    state in the user's writable `config.toml`.
-6. Keep the host's `claude`, `codex`, credentials, and repository paths
+6. Copy every canonical `agent-framework-*` skill directory into both
+   `~/.claude/skills` and `~/.codex/skills` as regular, mutable, user-owned
+   files. Replace only framework-owned skills on every rebuild.
+7. Keep the host's `claude`, `codex`, credentials, and repository paths
    available through the normal user environment.
 
-No agent-framework `.env`, command directory, skill directory, or agent
+No agent-framework `.env`, adapter-specific command directory, or agent
 directory is required.
 
 ## Blender add-on

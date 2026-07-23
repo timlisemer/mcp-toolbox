@@ -62,6 +62,19 @@ test:
     @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-mcp
     @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
     @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
+    @docker exec mcp-toolbox sh -eu -c '\
+        skills_dir=/app/tools/agent-framework/skills; \
+        test -d "$skills_dir"; \
+        unexpected_link="$(find "$skills_dir" -type l -print -quit)"; \
+        test -z "$unexpected_link"; \
+        found_skill=false; \
+        for skill_dir in "$skills_dir"/agent-framework-*; do \
+            test -d "$skill_dir" || continue; \
+            test -f "$skill_dir/SKILL.md"; \
+            test ! -L "$skill_dir/SKILL.md"; \
+            found_skill=true; \
+        done; \
+        test "$found_skill" = true'
     @echo "  PASS"
 
 check:
