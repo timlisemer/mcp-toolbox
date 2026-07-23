@@ -32,7 +32,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.NIXOS_REPO_TOKEN }}
 
       - name: Build and push MCP Toolbox (linux/amd64)
         uses: docker/build-push-action@v7
@@ -63,7 +63,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.NIXOS_REPO_TOKEN }}
 
       - name: Build and push MCP Toolbox (linux/arm64)
         uses: docker/build-push-action@v7
