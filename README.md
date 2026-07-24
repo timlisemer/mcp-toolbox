@@ -25,10 +25,9 @@ environment paths therefore come from the same declarations as the normal
 NixOS workstations instead of a separate Debian package list.
 
 The base image is private. Image builds require a GitHub token with read access
-to the `timlisemer/nixos-ci` package and write access to the mcp-toolbox
-packages. Store it in the mcp-toolbox repository as the Actions secret
-`NIXOS_REPO_TOKEN`; the workflow uses it to authenticate to GitHub Container
-Registry before pulling the base image and publishing the resulting image.
+to the `timlisemer/nixos-ci` package. Store it in the mcp-toolbox repository as
+the Actions secret `NIXOS_REPO_TOKEN`; the workflow uses it only to pull the
+base image.
 
 ## Available tools
 
