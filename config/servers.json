@@ -56,12 +56,12 @@
     },
     "playwright": {
       "enabled": true,
-      "type": "node",
+      "type": "system",
       "description": "Browser automation and page inspection using Playwright",
-      "repository": "https://github.com/microsoft/playwright-mcp",
-      "build_command": "npm ci --omit=dev && npx playwright-core install --no-shell chromium",
-      "binary_path": "cli.js",
-      "install_path": "",
+      "repository": "",
+      "build_command": "",
+      "binary_path": "/run/current-system/sw/bin/playwright-mcp",
+      "install_path": "/run/current-system/sw/bin/playwright-mcp",
       "capabilities": [
         "browser-automation",
         "accessibility",
@@ -75,8 +75,7 @@
         "--no-sandbox"
       ],
       "environment": {
-        "NODE_ENV": "production",
-        "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright"
+        "NODE_ENV": "production"
       }
     },
     "figma": {

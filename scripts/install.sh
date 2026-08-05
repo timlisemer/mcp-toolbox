@@ -37,6 +37,17 @@ while IFS= read -r tool_json; do
         continue
     fi
 
+    # System tools are complete executables supplied by the NixOS base image.
+    if [ "$type" = "system" ]; then
+        if [ -z "$binary_path" ] || [ ! -x "$binary_path" ]; then
+            echo "  Error: System executable is missing or not executable: $binary_path" >&2
+            exit 1
+        fi
+        echo "  Using system executable: $binary_path"
+        echo "  No local build required for $name"
+        continue
+    fi
+
     # Create tool directory
     tool_dir="$TOOLS_DIR/$name"
     mkdir -p "$tool_dir"

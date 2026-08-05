@@ -7,7 +7,6 @@ services:
     environment:
       - BLENDER_HOST=${BLENDER_HOST:-host.docker.internal}
       - BLENDER_PORT=${BLENDER_PORT:-9876}
-      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging:

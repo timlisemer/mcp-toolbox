@@ -6,7 +6,6 @@ FROM ${NIXOS_CI_IMAGE}
 SHELL ["/run/current-system/sw/bin/bash", "-c"]
 
 ENV GOPATH="/root/go"
-ENV PLAYWRIGHT_BROWSERS_PATH="/ms-playwright"
 
 # Create directory structure
 WORKDIR /app

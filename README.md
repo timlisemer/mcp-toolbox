@@ -9,9 +9,10 @@ During the image build, the toolbox:
 
 1. Reads tool definitions from `config/servers.json`.
 2. Records remote HTTP MCP servers without creating local placeholders.
-3. Clones each local server repository.
-4. Installs its dependencies and builds its runtime artifacts.
-5. Stores the result under `/app/tools/<tool-name>/`.
+3. Verifies tools that the NixOS base image supplies.
+4. Clones each remaining local server repository.
+5. Installs its dependencies and builds its runtime artifacts.
+6. Stores each built result under `/app/tools/<tool-name>/`.
 
 The container stays alive so container-native stdio servers can be started with
 `docker exec`. Remote servers are connected directly by the MCP client.
@@ -23,6 +24,10 @@ The toolbox is based on the multi-architecture
 repository. Rust, Go, Node.js, Python, native libraries, and development
 environment paths therefore come from the same declarations as the normal
 NixOS workstations instead of a separate Debian package list.
+
+The base image also supplies a matching Playwright MCP and Chromium pair. The
+toolbox verifies this executable but does not clone Playwright, install its npm
+dependencies, or download a browser.
 
 The base image is private. Image builds require a GitHub token with read access
 to the `timlisemer/nixos-ci` package. Store it in the mcp-toolbox repository as
@@ -36,7 +41,7 @@ base image.
 | mcp-nixos | Python | NixOS package and configuration search |
 | tailwind-svelte-assistant | Node.js | Tailwind CSS and SvelteKit documentation |
 | context7 | Node.js | Current library documentation and examples |
-| playwright | Node.js | Browser automation and page inspection |
+| playwright | Nix | Browser automation and page inspection |
 | figma | Remote HTTP | Official Figma design context |
 | blender | Python | Blender scene creation and rendering |
 | agent-framework | Rust | Checking, planning, implementation, review, and Git workflows |
@@ -67,7 +72,7 @@ claude mcp add tailwind-svelte -- docker exec -i mcp-toolbox \
 claude mcp add context7 -- docker exec -i mcp-toolbox \
   npx -y @upstash/context7-mcp
 claude mcp add playwright -- docker exec -i mcp-toolbox \
-  node /app/tools/playwright/cli.js --headless --browser chromium --no-sandbox
+  /run/current-system/sw/bin/playwright-mcp --headless --browser chromium --no-sandbox
 claude mcp add blender -- docker exec -i mcp-toolbox \
   /app/tools/blender/venv/bin/blender-mcp
 ```
