@@ -57,6 +57,10 @@ test:
         printf '%s\n' "$response" | jq -e 'select(.id == 1 and .result.serverInfo.name == "BlenderMCP")' >/dev/null; \
         echo "  PASS"
     @echo ""
+    @echo "playwright (launches Nix Chromium and opens a page):"
+    @bash scripts/test-playwright.sh
+    @echo "  PASS"
+    @echo ""
     @echo "agent-framework-rs release bundle:"
     @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-mcp
     @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-mcp
@@ -84,6 +88,7 @@ check:
         test -f "patches/$patch" || { echo "Missing patch: patches/$patch" >&2; exit 1; }; \
         done
     @bash -n scripts/install.sh
+    @bash -n scripts/test-playwright.sh
     @echo "Status: PASS"
 
 clean:

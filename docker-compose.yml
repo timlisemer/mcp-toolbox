@@ -4,11 +4,11 @@ services:
     image: mcp-toolbox:latest
     container_name: mcp-toolbox
     restart: unless-stopped
+    network_mode: host
+    shm_size: "2gb"
     environment:
-      - BLENDER_HOST=${BLENDER_HOST:-host.docker.internal}
+      - BLENDER_HOST=${BLENDER_HOST:-127.0.0.1}
       - BLENDER_PORT=${BLENDER_PORT:-9876}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     logging:
       driver: "json-file"
       options:

@@ -29,6 +29,10 @@ The base image also supplies a matching Playwright MCP and Chromium pair. The
 toolbox verifies this executable but does not clone Playwright, install its npm
 dependencies, or download a browser.
 
+The toolbox uses the host network and a 2 GiB shared-memory area. Playwright
+can therefore open public sites and sites that listen on the container host,
+including host services that listen only on `127.0.0.1`.
+
 The base image is private. Image builds require a GitHub token with read access
 to the `timlisemer/nixos-ci` package. Store it in the mcp-toolbox repository as
 the Actions secret `NIXOS_REPO_TOKEN`; the workflow uses it only to pull the
@@ -58,6 +62,13 @@ In another shell:
 ```bash
 just status
 just test
+```
+
+`just test` starts the Nix-built Chromium browser through Playwright MCP and
+opens `https://example.com`. Set `PLAYWRIGHT_TEST_URL` to test a host site:
+
+```bash
+PLAYWRIGHT_TEST_URL=http://127.0.0.1:8000 just test
 ```
 
 ## Client configuration
@@ -205,7 +216,7 @@ to Claude** in the BlenderMCP sidebar:
 docker cp mcp-toolbox:/app/tools/blender/addon.py ./blender-mcp-addon.py
 ```
 
-The container reaches the add-on through `host.docker.internal` on port `9876`.
+The container reaches the add-on through `127.0.0.1` on port `9876`.
 Override `BLENDER_HOST` or `BLENDER_PORT` in `.env` when needed. Blender MCP can
 execute Python in Blender, so use it only with clients and prompts you trust.
 
