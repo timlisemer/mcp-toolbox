@@ -328,10 +328,11 @@ Add a definition to `config/servers.json`, then run `just rebuild`.
 ```
 
 Supported local types are `node`, `python`, `go`, and `rust`. A `remote` entry
-instead declares an HTTP `transport` and `url`. Optional `patches` are applied
-before dependencies are installed and fail the image build when they no longer
-apply cleanly. Private GitHub repositories set `private_repository` to `true`
-and use the `github_token` BuildKit secret.
+instead declares an HTTP `transport` and `url`. An optional `revision` pins a
+Git commit or tag. Optional `patches` are applied before dependencies are
+installed and fail the image build when they no longer apply cleanly. Private
+GitHub repositories set `private_repository` to `true` and use the
+`github_token` BuildKit secret.
 
 ## Project structure
 

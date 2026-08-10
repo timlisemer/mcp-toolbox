@@ -16,6 +16,7 @@ while IFS= read -r tool_json; do
 
     type=$(echo "$value" | jq -r '.type')
     repo=$(echo "$value" | jq -r '.repository')
+    revision=$(echo "$value" | jq -r '.revision // empty')
     build_cmd=$(echo "$value" | jq -r '.build_command')
     binary_path=$(echo "$value" | jq -r '.binary_path')
     private_repository=$(echo "$value" | jq -r '.private_repository // false')
@@ -70,9 +71,20 @@ while IFS= read -r tool_json; do
             echo "  Error: Repository not accessible: $repo" >&2
             exit 1
         fi
-        if ! git "${git_auth_args[@]}" clone --depth 1 "$repo" . 2>/dev/null; then
-            echo "  Error: Failed to clone repository: $repo" >&2
-            exit 1
+        if [ -n "$revision" ]; then
+            git init --quiet .
+            git remote add origin "$repo"
+            if ! git "${git_auth_args[@]}" fetch --depth 1 origin "$revision" 2>/dev/null; then
+                echo "  Error: Failed to fetch revision $revision from $repo" >&2
+                exit 1
+            fi
+            git checkout --quiet --detach FETCH_HEAD
+            echo "  Using revision: $(git rev-parse HEAD)"
+        else
+            if ! git "${git_auth_args[@]}" clone --depth 1 "$repo" . 2>/dev/null; then
+                echo "  Error: Failed to clone repository: $repo" >&2
+                exit 1
+            fi
         fi
     else
         echo "  Info: No valid repository URL, creating placeholder for $name"
