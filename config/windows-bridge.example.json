@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "wsl": {
+      "kind": "wsl",
+      "wsl_distro": "nixos",
+      "mappings": [
+        {
+          "windows_prefix": "C:\\",
+          "linux_prefix": "/mnt/c"
+        },
+        {
+          "windows_prefix": "D:\\",
+          "linux_prefix": "/mnt/d"
+        },
+        {
+          "windows_prefix": "\\\\wsl.localhost\\nixos\\home",
+          "linux_prefix": "/home"
+        }
+      ]
+    },
+    "windows-remote": {
+      "kind": "windows-remote",
+      "ssh": {
+        "host": "linux-host.example",
+        "port": 22
+      },
+      "mappings": [
+        {
+          "windows_prefix": "C:\\some\\configured\\location",
+          "linux_prefix": "/some/configured/location"
+        },
+        {
+          "windows_prefix": "D:\\another\\location",
+          "linux_prefix": "/another/configured/location"
+        }
+      ]
+    }
+  },
+  "servers": {
+    "agent-framework": {
+      "enabled": true,
+      "hook_bridge": true,
+      "path_profile": "/path/to/agent-framework/bridge/agent-framework-paths.json"
+    },
+    "blender": {
+      "enabled": false,
+      "hook_bridge": false,
+      "path_profile": "/path/to/blender-paths.json"
+    },
+    "playwright": {
+      "enabled": false,
+      "hook_bridge": false,
+      "path_profile": "/path/to/playwright-paths.json"
+    }
+  }
+}

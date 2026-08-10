@@ -44,6 +44,7 @@ status:
 
 test:
     @echo "Testing MCP tools..."
+    @docker exec mcp-toolbox test -x /app/bin/mcp-path-bridge
     @echo ""
     @echo "mcp-nixos:"
     @echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}' | \
@@ -66,6 +67,7 @@ test:
     @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-mcp
     @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
     @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
+    @docker exec mcp-toolbox test -s /app/tools/agent-framework/bridge/agent-framework-paths.json
     @docker exec mcp-toolbox sh -eu -c '\
         skills_dir=/app/tools/agent-framework/skills; \
         test -d "$skills_dir"; \
@@ -84,11 +86,13 @@ test:
 check:
     @echo "Validating config..."
     @jq empty config/servers.json && echo "config/servers.json: valid JSON"
+    @jq empty config/windows-bridge.example.json && echo "config/windows-bridge.example.json: valid JSON"
     @for patch in $(jq -r '.tools[].patches[]?' config/servers.json); do \
         test -f "patches/$patch" || { echo "Missing patch: patches/$patch" >&2; exit 1; }; \
         done
     @bash -n scripts/install.sh
     @bash -n scripts/test-playwright.sh
+    @python3 -m unittest discover -s bridge -p 'test_*.py'
     @echo "Status: PASS"
 
 clean:

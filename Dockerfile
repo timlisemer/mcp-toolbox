@@ -9,13 +9,14 @@ ENV GOPATH="/root/go"
 
 # Create directory structure
 WORKDIR /app
-RUN mkdir -p /app/tools /app/config
+RUN mkdir -p /app/tools /app/config /app/bin
 
 # Copy configuration and build scripts
 COPY config/ /app/config/
 COPY patches/ /app/patches/
 COPY scripts/install.sh /app/scripts/
-RUN chmod +x /app/scripts/*.sh
+COPY bridge/mcp_path_bridge.py /app/bin/mcp-path-bridge
+RUN chmod +x /app/scripts/*.sh /app/bin/mcp-path-bridge
 
 # Pre-build all MCP tools. The optional BuildKit secret provides read-only
 # access to private repositories without persisting credentials in a layer.

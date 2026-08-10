@@ -123,10 +123,14 @@ The image retains the two release executables and the canonical,
 adapter-independent skill bundle:
 
 ```text
+/app/bin/
+└── mcp-path-bridge
 /app/tools/agent-framework/
 ├── bin/
 │   ├── agent-framework-mcp
 │   └── agent-framework-tool-policy-hook
+├── bridge/
+│   └── agent-framework-paths.json
 └── skills/
     └── agent-framework-*/
         └── SKILL.md
@@ -157,7 +161,18 @@ docker cp mcp-toolbox:/app/tools/agent-framework/bin/. \
   /path/to/agent-framework/bin/
 docker cp mcp-toolbox:/app/tools/agent-framework/skills/. \
   /path/to/agent-framework/skills/
+docker cp mcp-toolbox:/app/tools/agent-framework/bridge/. \
+  /path/to/agent-framework/bridge/
 chmod 755 /path/to/agent-framework/bin/agent-framework-*
+```
+
+Copy the lightweight path bridge to the same host deployment. The bridge uses
+only the Python standard library. It does not need a build step or a compiler.
+
+```bash
+docker cp mcp-toolbox:/app/bin/mcp-path-bridge \
+  /path/to/agent-framework/bin/mcp-path-bridge
+chmod 755 /path/to/agent-framework/bin/mcp-path-bridge
 ```
 
 The default provider is Claude Code. Select Codex with
@@ -204,6 +219,74 @@ A declarative NixOS deployment should:
 
 No agent-framework `.env`, adapter-specific command directory, or agent
 directory is required.
+
+## Windows path bridge
+
+`mcp-path-bridge` changes declared path fields at two boundaries:
+
+- `mcp-stdio` proxies newline-delimited MCP JSON-RPC messages.
+- `hook` proxies one JSON hook request and one JSON hook response.
+
+The hook mode is adapter-independent. A server path profile declares the hook
+envelope selectors. The same bridge can support Codex, Claude, or another JSON
+hook provider.
+
+The bridge does not change all strings. Each MCP server owns a separate path
+profile. A profile declares request fields, structured result fields, and hook
+fields. An MCP server with no enabled profile gets no path conversion.
+Agent Framework creates its profile from Rust-owned JSON Schemas through its
+existing `workspace-quality` generator. The Agent Framework audit rejects a
+missing or stale generated profile. The toolbox build runs that generator and
+stores the version-matched file under `/app/tools/agent-framework/bridge/`.
+
+The example file at `config/windows-bridge.example.json` has two execution
+profiles:
+
+- `wsl` uses `wsl.exe -d nixos`. Its example mappings cover the `C:` and `D:`
+  drives and one explicit WSL UNC prefix.
+- `windows-remote` uses SSH. Its Windows and Linux prefixes are explicit
+  configuration data. The bridge does not infer Linux paths from drive
+  letters in this profile.
+
+Use Nix configuration to select a profile and to generate the mapping list.
+Pass the selected profile with `--profile` or set
+`MCP_TOOLBOX_BRIDGE_PROFILE`. If neither value exists, `WSL=1` can select the
+only configured WSL profile. The bridge then verifies `WSL_DISTRO_NAME`.
+`WSL_INTEROP` supplies diagnostic information only. The remote profile does
+not inspect WSL variables.
+
+The `client-command` mode produces a `command` and `args` JSON object for any
+Windows MCP or hook client. This example produces the WSL MCP command:
+
+```bash
+/path/to/mcp-path-bridge client-command \
+  --config /path/to/windows-bridge.json \
+  --profile wsl \
+  --server agent-framework \
+  --mode mcp-stdio \
+  --bridge-command /path/to/mcp-path-bridge \
+  -- /path/to/agent-framework-mcp
+```
+
+This example produces the remote hook command:
+
+```bash
+/path/to/mcp-path-bridge client-command \
+  --config /path/to/windows-bridge.json \
+  --profile windows-remote \
+  --server agent-framework \
+  --mode hook \
+  --bridge-command /path/to/mcp-path-bridge \
+  -- /path/to/agent-framework-tool-policy-hook tool-policy-hook
+```
+
+The path engine accepts slash and backslash forms of absolute Windows paths.
+It compares Windows prefixes without case sensitivity. It uses the longest
+full-component match. It converts separators and components in relative
+Windows paths. It rejects ambiguous drive-relative and rooted-relative paths,
+unmapped absolute Windows paths, Windows device paths, and UNC paths with no
+explicit mapping. It converts declared Linux result paths back to Windows paths.
+Normal messages, logs, command output, and text results stay unchanged.
 
 ## Blender add-on
 
