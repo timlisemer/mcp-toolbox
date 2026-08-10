@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import ntpath
@@ -12,6 +13,7 @@ import posixpath
 import re
 import selectors
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -24,6 +26,48 @@ MAXIMUM_MESSAGE_BYTES = 16 * 1024 * 1024
 PROFILE_ENVIRONMENT_KEY = "MCP_TOOLBOX_BRIDGE_PROFILE"
 REQUEST_THREAD_SHUTDOWN_SECONDS = 1.0
 SUPPORTED_SCHEMA_VERSION = 1
+WINDOWS_COMMAND_SCRIPT = r"""
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+try {
+    $jsonBytes = [Convert]::FromBase64String($env:MCP_TOOLBOX_COMMAND_REQUEST)
+    $request = ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($jsonBytes))
+    if ($request.environment_mode -eq 'replace') {
+        Get-ChildItem Env: | ForEach-Object {
+            Remove-Item -LiteralPath ("Env:" + $_.Name) -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($name in @($request.remove_environment)) {
+        Remove-Item -LiteralPath ("Env:" + [string]$name) -ErrorAction SilentlyContinue
+    }
+    foreach ($entry in @($request.environment)) {
+        Set-Item -LiteralPath ("Env:" + [string]$entry.name) -Value ([string]$entry.value)
+    }
+    Set-Location -LiteralPath ([string]$request.working_directory)
+    $commandName = [string]$request.executable
+    $resolved = @(Get-Command -Name $commandName -CommandType Application -ErrorAction SilentlyContinue)[0]
+    if ($null -eq $resolved) {
+        $resolved = @(Get-Command -Name $commandName -CommandType ExternalScript -ErrorAction SilentlyContinue)[0]
+    }
+    if ($null -eq $resolved) {
+        [Console]::Error.WriteLine("Windows executable was not found: " + $commandName)
+        exit 127
+    }
+    $commandArguments = @($request.arguments | ForEach-Object { [string]$_ })
+    $global:LASTEXITCODE = $null
+    & $resolved.Source @commandArguments
+    if ($null -ne $LASTEXITCODE) {
+        exit [int]$LASTEXITCODE
+    }
+    if ($?) {
+        exit 0
+    }
+    exit 1
+} catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 127
+}
+""".strip()
 
 
 class BridgeError(Exception):
@@ -44,6 +88,7 @@ class PathRule:
 
     windows_prefix: str
     linux_prefix: str
+    execution_host: str
 
 
 class PathMap:
@@ -58,7 +103,7 @@ class PathMap:
         for index, mapping in enumerate(mappings):
             _require_keys(
                 mapping,
-                required={"windows_prefix", "linux_prefix"},
+                required={"windows_prefix", "linux_prefix", "execution_host"},
                 optional=set(),
                 context=f"mapping {index}",
             )
@@ -68,6 +113,13 @@ class PathMap:
             linux_value = _require_string(
                 mapping["linux_prefix"], f"mapping {index} linux_prefix"
             )
+            execution_host = _require_string(
+                mapping["execution_host"], f"mapping {index} execution_host"
+            )
+            if execution_host not in {"linux", "windows"}:
+                raise BridgeError(
+                    f"mapping {index} execution_host must be 'linux' or 'windows'"
+                )
             windows_kind = _windows_path_kind(windows_value)
             if windows_kind == "device":
                 raise BridgeError(
@@ -90,7 +142,7 @@ class PathMap:
                 )
             windows_prefixes.add(folded_windows)
             linux_prefixes.add(linux_prefix)
-            rules.append(PathRule(windows_prefix, linux_prefix))
+            rules.append(PathRule(windows_prefix, linux_prefix, execution_host))
         self._rules = tuple(rules)
 
     def to_linux(self, value: str) -> str:
@@ -134,6 +186,17 @@ class PathMap:
             return f"{selected.windows_prefix}{converted_remainder}"
         return f"{selected.windows_prefix}\\{converted_remainder}"
 
+    def execution_host(self, linux_path: str) -> str:
+        """Return the declared execution host for one absolute Linux path."""
+
+        normalized_path = _normalize_linux_absolute(linux_path)
+        selected = self._longest_linux_rule(normalized_path)
+        if selected is None:
+            raise BridgeError(
+                f"no execution-host mapping exists for Linux path {linux_path!r}"
+            )
+        return selected.execution_host
+
     def _longest_windows_rule(self, path: str) -> PathRule | None:
         matching = [
             rule
@@ -170,6 +233,14 @@ class HookFields:
 
 
 @dataclass(frozen=True)
+class CommandBridgeProfile:
+    """Server-owned command-bridge protocol settings."""
+
+    environment_variable: str
+    protocol_version: int
+
+
+@dataclass(frozen=True)
 class ServerPathProfile:
     """Path fields owned by one MCP server."""
 
@@ -177,6 +248,7 @@ class ServerPathProfile:
     request_fields: tuple[str, ...]
     result_fields: tuple[str, ...]
     hook: HookFields
+    command_bridge: CommandBridgeProfile | None = None
 
     @classmethod
     def load(cls, path: Path) -> ServerPathProfile:
@@ -186,7 +258,7 @@ class ServerPathProfile:
         _require_keys(
             data,
             required={"schema_version", "server", "request_fields", "result_fields"},
-            optional={"hook"},
+            optional={"hook", "command_bridge"},
             context="server path profile",
         )
         _require_schema_version(data["schema_version"], "server path profile")
@@ -218,6 +290,7 @@ class ServerPathProfile:
         tool_calls = tuple(
             _load_hook_tool_call(item, index) for index, item in enumerate(call_data)
         )
+        command_bridge = _load_command_bridge_profile(data.get("command_bridge"))
         return cls(
             server=server,
             request_fields=request_fields,
@@ -227,6 +300,7 @@ class ServerPathProfile:
                 result_fields=hook_result_fields,
                 tool_calls=tool_calls,
             ),
+            command_bridge=command_bridge,
         )
 
 
@@ -408,11 +482,32 @@ def translate_hook_response(
 
 
 def run_mcp_proxy(
-    command: Sequence[str], profile: ServerPathProfile, path_map: PathMap
+    command: Sequence[str],
+    profile: ServerPathProfile,
+    transport: TransportProfile,
+    configuration_path: Path,
 ) -> None:
     """Run a newline-delimited MCP proxy until both standard streams close."""
 
-    process = _spawn(command)
+    child_environment = os.environ.copy()
+    if profile.command_bridge is not None:
+        bridge_configuration = {
+            "protocol_version": profile.command_bridge.protocol_version,
+            "command": [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "command",
+                "--config",
+                str(configuration_path),
+                "--profile",
+                transport.name,
+            ],
+        }
+        child_environment[profile.command_bridge.environment_variable] = json.dumps(
+            bridge_configuration,
+            separators=(",", ":"),
+        )
+    process = _spawn(command, child_environment)
     if process.stdin is None or process.stdout is None:
         raise BridgeError("could not open proxied MCP standard streams")
     request_errors: list[Exception] = []
@@ -423,7 +518,9 @@ def run_mcp_proxy(
             _forward_json_input(
                 sys.stdin.buffer,
                 process.stdin,
-                lambda value: translate_mcp_request(value, profile, path_map),
+                lambda value: translate_mcp_request(
+                    value, profile, transport.path_map
+                ),
                 request_stop,
             )
         except Exception as error:  # Forward the original worker failure.
@@ -445,7 +542,9 @@ def run_mcp_proxy(
         _forward_json_lines(
             process.stdout,
             sys.stdout.buffer,
-            lambda value: translate_mcp_response(value, profile, path_map),
+            lambda value: translate_mcp_response(
+                value, profile, transport.path_map
+            ),
         )
     except Exception as error:
         response_error = error
@@ -500,6 +599,91 @@ def run_hook_proxy(
     translated_response = translate_hook_response(response, profile, path_map)
     sys.stdout.buffer.write(_encode_json(translated_response))
     sys.stdout.buffer.flush()
+
+
+def run_command_proxy(
+    command: Sequence[str],
+    transport: TransportProfile,
+    environment_mode: str,
+    environment_entries: Sequence[Sequence[str]],
+    removed_environment: Sequence[str],
+) -> None:
+    """Run one child command on the host that owns its working directory."""
+
+    if not command:
+        raise BridgeError("a bridged host command is required after --")
+    working_directory = os.getcwd()
+    execution_host = transport.path_map.execution_host(working_directory)
+    if execution_host == "linux":
+        target_environment = {} if environment_mode == "replace" else os.environ.copy()
+        for variable_name in removed_environment:
+            target_environment.pop(variable_name, None)
+        for variable_name, variable_value in environment_entries:
+            target_environment[variable_name] = variable_value
+        os.execvpe(command[0], list(command), target_environment)
+    if transport.kind != "wsl":
+        raise BridgeError(
+            "Windows command execution requires a WSL transport profile"
+        )
+    powershell = shutil.which("powershell.exe")
+    if powershell is None:
+        raise BridgeError("powershell.exe is not available through WSL interop")
+
+    translated_entries = [
+        {
+            "name": name,
+            "value": _translate_command_path(value, transport.path_map),
+        }
+        for name, value in environment_entries
+    ]
+    payload = {
+        "working_directory": transport.path_map.to_windows(working_directory),
+        "executable": _translate_command_path(command[0], transport.path_map),
+        "arguments": [
+            _translate_command_path(argument, transport.path_map)
+            for argument in command[1:]
+        ],
+        "environment_mode": environment_mode,
+        "environment": translated_entries,
+        "remove_environment": list(removed_environment),
+    }
+    encoded_payload = base64.b64encode(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).decode("ascii")
+    windows_environment = os.environ.copy()
+    windows_environment["MCP_TOOLBOX_COMMAND_REQUEST"] = encoded_payload
+    inherited_wslenv = windows_environment.get("WSLENV", "")
+    windows_environment["WSLENV"] = ":".join(
+        item
+        for item in [inherited_wslenv, "MCP_TOOLBOX_COMMAND_REQUEST"]
+        if item
+    )
+    encoded_script = base64.b64encode(
+        WINDOWS_COMMAND_SCRIPT.encode("utf-16-le")
+    ).decode("ascii")
+    os.execve(
+        powershell,
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-OutputFormat",
+            "Text",
+            "-EncodedCommand",
+            encoded_script,
+        ],
+        windows_environment,
+    )
+
+
+def _translate_command_path(value: str, path_map: PathMap) -> str:
+    if value.startswith("/"):
+        try:
+            return path_map.to_windows(value)
+        except BridgeError:
+            return value
+    return value
 
 
 def build_client_command(
@@ -613,7 +797,9 @@ def _forward_encoded_json(
     destination.flush()
 
 
-def _spawn(command: Sequence[str]) -> subprocess.Popen[bytes]:
+def _spawn(
+    command: Sequence[str], environment: Mapping[str, str] | None = None
+) -> subprocess.Popen[bytes]:
     if not command:
         raise BridgeError("a proxied command is required after --")
     return subprocess.Popen(
@@ -621,6 +807,7 @@ def _spawn(command: Sequence[str]) -> subprocess.Popen[bytes]:
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=None,
+        env=environment,
     )
 
 
@@ -762,6 +949,31 @@ def _load_hook_tool_call(value: Any, index: int) -> HookToolCall:
         for pattern in patterns_value
     )
     return HookToolCall(name_field, arguments_field, patterns)
+
+
+def _load_command_bridge_profile(value: Any) -> CommandBridgeProfile | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise BridgeError("server path profile command_bridge must be an object")
+    _require_keys(
+        value,
+        required={"environment_variable", "protocol_version"},
+        optional=set(),
+        context="server path profile command_bridge",
+    )
+    environment_variable = _require_string(
+        value["environment_variable"],
+        "server path profile command_bridge environment_variable",
+    )
+    if "=" in environment_variable:
+        raise BridgeError("command bridge environment_variable must not contain '='")
+    protocol_version = value["protocol_version"]
+    if isinstance(protocol_version, bool) or not isinstance(protocol_version, int):
+        raise BridgeError("command bridge protocol_version must be an integer")
+    if protocol_version < 1:
+        raise BridgeError("command bridge protocol_version must be positive")
+    return CommandBridgeProfile(environment_variable, protocol_version)
 
 
 def _validate_selectors(value: Any, context: str) -> tuple[str, ...]:
@@ -1010,6 +1222,28 @@ def _parser() -> argparse.ArgumentParser:
     )
     client.add_argument("--bridge-command", required=True)
     client.add_argument("command", nargs=argparse.REMAINDER)
+    command_proxy = subparsers.add_parser("command")
+    command_proxy.add_argument("--config", required=True, type=Path)
+    command_proxy.add_argument("--profile")
+    command_proxy.add_argument(
+        "--environment-mode",
+        required=True,
+        choices=("overlay", "replace"),
+    )
+    command_proxy.add_argument(
+        "--environment",
+        action="append",
+        default=[],
+        nargs=2,
+        metavar=("NAME", "VALUE"),
+    )
+    command_proxy.add_argument(
+        "--remove-environment",
+        action="append",
+        default=[],
+        metavar="NAME",
+    )
+    command_proxy.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
 
@@ -1033,11 +1267,25 @@ def main(arguments: Sequence[str] | None = None) -> int:
             sys.stdout.write("\n")
             return 0
         transport = configuration.resolve_runtime_profile(parsed.profile)
+        if parsed.operation == "command":
+            run_command_proxy(
+                command,
+                transport,
+                parsed.environment_mode,
+                parsed.environment,
+                parsed.remove_environment,
+            )
+            return 0
         server_profile = configuration.server_profile(
             parsed.server, require_hook=parsed.boundary_mode == "hook"
         )
         if parsed.boundary_mode == "mcp-stdio":
-            run_mcp_proxy(command, server_profile, transport.path_map)
+            run_mcp_proxy(
+                command,
+                server_profile,
+                transport,
+                configuration.path,
+            )
         else:
             run_hook_proxy(command, server_profile, transport.path_map)
         return 0

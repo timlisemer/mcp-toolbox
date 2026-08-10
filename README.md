@@ -238,15 +238,27 @@ Agent Framework creates its profile from Rust-owned JSON Schemas through its
 existing `workspace-quality` generator. The Agent Framework audit rejects a
 missing or stale generated profile. The toolbox build runs that generator and
 stores the version-matched file under `/app/tools/agent-framework/bridge/`.
+The generated profile also declares the versioned host-command bridge contract.
+The MCP proxy gives this contract to Agent Framework when it starts the server.
+
+Each path mapping declares an `execution_host`. The value is `windows` when
+Windows owns the mapped files. It is `linux` when Linux owns them. Agent
+Framework sends every repository command through one generic command bridge.
+The bridge receives the executable, arguments, working directory, and explicit
+environment changes. It does not contain a list of tool names. For a WSL
+profile, it starts a Windows executable through PowerShell when the working
+directory has a Windows execution host. It starts the Linux executable when
+the working directory has a Linux execution host.
 
 The example file at `config/windows-bridge.example.json` has two execution
 profiles:
 
 - `wsl` uses `wsl.exe -d nixos`. Its example mappings cover the `C:` and `D:`
-  drives and one explicit WSL UNC prefix.
+  drives and one explicit WSL UNC prefix. Windows owns the drive mappings.
+  Linux owns the WSL UNC mapping.
 - `windows-remote` uses SSH. Its Windows and Linux prefixes are explicit
   configuration data. The bridge does not infer Linux paths from drive
-  letters in this profile.
+  letters or select an execution host in this profile.
 
 Use Nix configuration to select a profile and to generate the mapping list.
 Pass the selected profile with `--profile` or set

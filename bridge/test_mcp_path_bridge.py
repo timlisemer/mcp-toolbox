@@ -30,15 +30,25 @@ class PathMapTests(unittest.TestCase):
     def setUp(self) -> None:
         self.path_map = PathMap(
             [
-                {"windows_prefix": "C:\\", "linux_prefix": "/mnt/c"},
-                {"windows_prefix": "D:\\repo", "linux_prefix": "/srv/repo"},
+                {
+                    "windows_prefix": "C:\\",
+                    "linux_prefix": "/mnt/c",
+                    "execution_host": "windows",
+                },
+                {
+                    "windows_prefix": "D:\\repo",
+                    "linux_prefix": "/srv/repo",
+                    "execution_host": "windows",
+                },
                 {
                     "windows_prefix": "D:\\repo\\nested",
                     "linux_prefix": "/srv/nested",
+                    "execution_host": "windows",
                 },
                 {
                     "windows_prefix": "\\\\wsl.localhost\\nixos\\home",
                     "linux_prefix": "/home",
+                    "execution_host": "linux",
                 },
             ]
         )
@@ -111,7 +121,13 @@ class MessageTranslationTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.path_map = PathMap(
-            [{"windows_prefix": "D:\\repo", "linux_prefix": "/srv/repo"}]
+            [
+                {
+                    "windows_prefix": "D:\\repo",
+                    "linux_prefix": "/srv/repo",
+                    "execution_host": "windows",
+                }
+            ]
         )
         self.profile = ServerPathProfile(
             server="agent-framework",
@@ -233,6 +249,10 @@ class ConfigurationTests(unittest.TestCase):
                     "server": "agent-framework",
                     "request_fields": ["/working_dir"],
                     "result_fields": [],
+                    "command_bridge": {
+                        "environment_variable": "TEST_HOST_COMMAND_BRIDGE",
+                        "protocol_version": 1,
+                    },
                     "hook": {
                         "request_fields": ["/transcript_path"],
                         "result_fields": [],
@@ -255,6 +275,12 @@ class ConfigurationTests(unittest.TestCase):
                                 {
                                     "windows_prefix": "C:\\",
                                     "linux_prefix": "/mnt/c",
+                                    "execution_host": "windows",
+                                },
+                                {
+                                    "windows_prefix": "Z:\\bridge-test",
+                                    "linux_prefix": str(directory),
+                                    "execution_host": "windows",
                                 }
                             ],
                         },
@@ -265,6 +291,12 @@ class ConfigurationTests(unittest.TestCase):
                                 {
                                     "windows_prefix": "D:\\work",
                                     "linux_prefix": "/srv/work",
+                                    "execution_host": "linux",
+                                },
+                                {
+                                    "windows_prefix": "Z:\\bridge-test",
+                                    "linux_prefix": str(directory),
+                                    "execution_host": "linux",
                                 }
                             ],
                         },
@@ -345,9 +377,12 @@ class ConfigurationTests(unittest.TestCase):
             },
         }
         child_program = (
-            "import sys\n"
+            "import json, os, sys\n"
             "for input_line in sys.stdin.buffer:\n"
-            "    sys.stdout.buffer.write(input_line)\n"
+            "    message = json.loads(input_line)\n"
+            "    message['host_command_bridge'] = "
+            "os.environ.get('TEST_HOST_COMMAND_BRIDGE')\n"
+            "    sys.stdout.buffer.write((json.dumps(message) + '\\n').encode())\n"
             "    sys.stdout.buffer.flush()\n"
         )
         environment = os.environ.copy()
@@ -379,6 +414,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(
             observed["params"]["arguments"]["working_dir"], "/mnt/c/work/project"
         )
+        command_bridge = json.loads(observed["host_command_bridge"])
+        self.assertEqual(command_bridge["protocol_version"], 1)
+        self.assertEqual(command_bridge["command"][-2:], ["--profile", "wsl"])
 
     def test_hook_proxy_is_provider_neutral_and_translates_before_child_access(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
@@ -416,6 +454,107 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr.decode())
         observed = json.loads(completed.stdout)
         self.assertEqual(observed["observed_path"], "/srv/work/sessions/thread.jsonl")
+
+    def test_command_proxy_routes_any_executable_to_the_declared_windows_host(self) -> None:
+        bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
+        fake_directory = Path(self.temporary.name) / "fake-bin"
+        fake_directory.mkdir()
+        fake_powershell = fake_directory / "powershell.exe"
+        fake_powershell.write_text(
+            f"#!{sys.executable}\n"
+            "import base64, json, os\n"
+            "payload = base64.b64decode("
+            "os.environ['MCP_TOOLBOX_COMMAND_REQUEST']).decode('utf-8')\n"
+            "print(payload)\n",
+            encoding="utf-8",
+        )
+        fake_powershell.chmod(0o755)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "PATH": f"{fake_directory}{os.pathsep}{environment['PATH']}",
+                "WSL": "1",
+                "WSL_DISTRO_NAME": "nixos",
+            }
+        )
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(bridge_script),
+                "command",
+                "--config",
+                str(self.configuration_path),
+                "--profile",
+                "wsl",
+                "--environment-mode",
+                "overlay",
+                "--environment",
+                "GIT_INDEX_FILE",
+                str(Path(self.temporary.name) / ".git" / "index"),
+                "--",
+                "arbitrary-tool",
+                "argument with spaces",
+            ],
+            cwd=self.temporary.name,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["working_directory"], r"Z:\bridge-test")
+        self.assertEqual(payload["executable"], "arbitrary-tool")
+        self.assertEqual(payload["arguments"], ["argument with spaces"])
+        self.assertEqual(
+            payload["environment"],
+            [
+                {
+                    "name": "GIT_INDEX_FILE",
+                    "value": r"Z:\bridge-test\.git\index",
+                }
+            ],
+        )
+
+    def test_command_proxy_applies_target_environment_only_to_linux_command(self) -> None:
+        bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
+        child_program = (
+            "import json, os; "
+            "print(json.dumps({'expected': os.environ.get('EXPECTED'), "
+            "'path': os.environ.get('PATH')}))"
+        )
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(bridge_script),
+                "command",
+                "--config",
+                str(self.configuration_path),
+                "--profile",
+                "windows-remote",
+                "--environment-mode",
+                "replace",
+                "--environment",
+                "EXPECTED",
+                "target-value",
+                "--",
+                sys.executable,
+                "-c",
+                child_program,
+            ],
+            cwd=self.temporary.name,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        observed = json.loads(completed.stdout)
+        self.assertEqual(observed["expected"], "target-value")
+        self.assertIsNone(observed["path"])
 
     def test_mcp_proxy_exits_when_child_fails_with_client_input_open(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")

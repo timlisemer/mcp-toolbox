@@ -7,15 +7,18 @@
       "mappings": [
         {
           "windows_prefix": "C:\\",
-          "linux_prefix": "/mnt/c"
+          "linux_prefix": "/mnt/c",
+          "execution_host": "windows"
         },
         {
           "windows_prefix": "D:\\",
-          "linux_prefix": "/mnt/d"
+          "linux_prefix": "/mnt/d",
+          "execution_host": "windows"
         },
         {
           "windows_prefix": "\\\\wsl.localhost\\nixos\\home",
-          "linux_prefix": "/home"
+          "linux_prefix": "/home",
+          "execution_host": "linux"
         }
       ]
     },
@@ -28,11 +31,13 @@
       "mappings": [
         {
           "windows_prefix": "C:\\some\\configured\\location",
-          "linux_prefix": "/some/configured/location"
+          "linux_prefix": "/some/configured/location",
+          "execution_host": "linux"
         },
         {
           "windows_prefix": "D:\\another\\location",
-          "linux_prefix": "/another/configured/location"
+          "linux_prefix": "/another/configured/location",
+          "execution_host": "linux"
         }
       ]
     }
