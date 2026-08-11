@@ -237,8 +237,8 @@ fields. An MCP server with no enabled profile gets no path conversion.
 Agent Framework creates its profile from Rust-owned JSON Schemas through its
 existing `workspace-quality` generator. The Agent Framework audit rejects a
 missing or stale generated profile. The toolbox build runs that generator and
-stores the version-matched file under `/app/tools/agent-framework/bridge/`.
-The generated profile also declares the versioned host-command bridge contract.
+stores the generated file under `/app/tools/agent-framework/bridge/`.
+The generated profile also declares the host-command bridge contract.
 The MCP proxy gives this contract to Agent Framework when it starts the server.
 
 Each path mapping declares an `execution_host`. The value is `windows` when

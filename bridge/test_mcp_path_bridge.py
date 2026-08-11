@@ -245,13 +245,11 @@ class ConfigurationTests(unittest.TestCase):
         path_profile.write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
                     "server": "agent-framework",
                     "request_fields": ["/working_dir"],
                     "result_fields": [],
                     "command_bridge": {
                         "environment_variable": "TEST_HOST_COMMAND_BRIDGE",
-                        "protocol_version": 1,
                     },
                     "hook": {
                         "request_fields": ["/transcript_path"],
@@ -266,7 +264,6 @@ class ConfigurationTests(unittest.TestCase):
         self.configuration_path.write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
                     "profiles": {
                         "wsl": {
                             "kind": "wsl",
@@ -365,6 +362,38 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(remote_command["args"][:2], ["-p", "2222"])
         self.assertIn(" hook ", remote_command["args"][-1])
 
+    def test_validate_checks_the_selected_config_and_staged_server_profile(self) -> None:
+        bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
+        environment = os.environ.copy()
+        environment.update({"WSL": "1", "WSL_DISTRO_NAME": "nixos"})
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(bridge_script),
+                "validate",
+                "--config",
+                str(self.configuration_path),
+                "--profile",
+                "wsl",
+                "--server",
+                "agent-framework",
+                "--path-profile",
+                str(Path(self.temporary.name) / "agent-framework-paths.json"),
+                "--require-command-bridge",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        self.assertEqual(
+            json.loads(completed.stdout),
+            {"profile": "wsl", "server": "agent-framework", "status": "valid"},
+        )
+
     def test_mcp_proxy_translates_before_the_child_reads_the_request(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
         request = {
@@ -415,7 +444,6 @@ class ConfigurationTests(unittest.TestCase):
             observed["params"]["arguments"]["working_dir"], "/mnt/c/work/project"
         )
         command_bridge = json.loads(observed["host_command_bridge"])
-        self.assertEqual(command_bridge["protocol_version"], 1)
         self.assertEqual(command_bridge["command"][-2:], ["--profile", "wsl"])
 
     def test_hook_proxy_is_provider_neutral_and_translates_before_child_access(self) -> None:

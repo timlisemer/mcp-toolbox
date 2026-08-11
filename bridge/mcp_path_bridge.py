@@ -25,7 +25,6 @@ from typing import Any, BinaryIO, Callable, Mapping, Sequence
 MAXIMUM_MESSAGE_BYTES = 16 * 1024 * 1024
 PROFILE_ENVIRONMENT_KEY = "MCP_TOOLBOX_BRIDGE_PROFILE"
 REQUEST_THREAD_SHUTDOWN_SECONDS = 1.0
-SUPPORTED_SCHEMA_VERSION = 1
 WINDOWS_COMMAND_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -237,7 +236,6 @@ class CommandBridgeProfile:
     """Server-owned command-bridge protocol settings."""
 
     environment_variable: str
-    protocol_version: int
 
 
 @dataclass(frozen=True)
@@ -257,11 +255,10 @@ class ServerPathProfile:
         data = _load_json_object(path, "server path profile")
         _require_keys(
             data,
-            required={"schema_version", "server", "request_fields", "result_fields"},
+            required={"server", "request_fields", "result_fields"},
             optional={"hook", "command_bridge"},
             context="server path profile",
         )
-        _require_schema_version(data["schema_version"], "server path profile")
         server = _require_string(data["server"], "server path profile server")
         request_fields = _validate_selectors(
             data["request_fields"], "server request_fields"
@@ -333,11 +330,10 @@ class BridgeConfiguration:
         data = _load_json_object(path, "bridge configuration")
         _require_keys(
             data,
-            required={"schema_version", "profiles", "servers"},
+            required={"profiles", "servers"},
             optional=set(),
             context="bridge configuration",
         )
-        _require_schema_version(data["schema_version"], "bridge configuration")
         profile_data = data["profiles"]
         server_data = data["servers"]
         if not isinstance(profile_data, dict) or not profile_data:
@@ -354,7 +350,12 @@ class BridgeConfiguration:
             for name, value in server_data.items()
         }
 
-    def server_profile(self, name: str, require_hook: bool = False) -> ServerPathProfile:
+    def server_profile(
+        self,
+        name: str,
+        require_hook: bool = False,
+        path_override: Path | None = None,
+    ) -> ServerPathProfile:
         """Return one enabled server profile."""
 
         configuration = self.servers.get(name)
@@ -364,7 +365,7 @@ class BridgeConfiguration:
             raise BridgeError(f"server {name!r} bridge is disabled")
         if require_hook and not configuration.hook_bridge:
             raise BridgeError(f"server {name!r} hook bridge is disabled")
-        profile = ServerPathProfile.load(configuration.path_profile)
+        profile = ServerPathProfile.load(path_override or configuration.path_profile)
         if profile.server != name:
             raise BridgeError(
                 f"server profile declares {profile.server!r}, expected {name!r}"
@@ -492,7 +493,6 @@ def run_mcp_proxy(
     child_environment = os.environ.copy()
     if profile.command_bridge is not None:
         bridge_configuration = {
-            "protocol_version": profile.command_bridge.protocol_version,
             "command": [
                 sys.executable,
                 str(Path(__file__).resolve()),
@@ -958,7 +958,7 @@ def _load_command_bridge_profile(value: Any) -> CommandBridgeProfile | None:
         raise BridgeError("server path profile command_bridge must be an object")
     _require_keys(
         value,
-        required={"environment_variable", "protocol_version"},
+        required={"environment_variable"},
         optional=set(),
         context="server path profile command_bridge",
     )
@@ -968,12 +968,7 @@ def _load_command_bridge_profile(value: Any) -> CommandBridgeProfile | None:
     )
     if "=" in environment_variable:
         raise BridgeError("command bridge environment_variable must not contain '='")
-    protocol_version = value["protocol_version"]
-    if isinstance(protocol_version, bool) or not isinstance(protocol_version, int):
-        raise BridgeError("command bridge protocol_version must be an integer")
-    if protocol_version < 1:
-        raise BridgeError("command bridge protocol_version must be positive")
-    return CommandBridgeProfile(environment_variable, protocol_version)
+    return CommandBridgeProfile(environment_variable)
 
 
 def _validate_selectors(value: Any, context: str) -> tuple[str, ...]:
@@ -1156,13 +1151,6 @@ def _load_json_object(path: Path, context: str) -> dict[str, Any]:
     return value
 
 
-def _require_schema_version(value: Any, context: str) -> None:
-    if value != SUPPORTED_SCHEMA_VERSION:
-        raise BridgeError(
-            f"{context} schema_version must equal {SUPPORTED_SCHEMA_VERSION}"
-        )
-
-
 def _require_keys(
     value: Mapping[str, Any],
     required: set[str],
@@ -1244,6 +1232,12 @@ def _parser() -> argparse.ArgumentParser:
         metavar="NAME",
     )
     command_proxy.add_argument("command", nargs=argparse.REMAINDER)
+    validate = subparsers.add_parser("validate")
+    validate.add_argument("--config", required=True, type=Path)
+    validate.add_argument("--profile")
+    validate.add_argument("--server", required=True)
+    validate.add_argument("--path-profile", required=True, type=Path)
+    validate.add_argument("--require-command-bridge", action="store_true")
     return parser
 
 
@@ -1253,6 +1247,27 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parsed = _parser().parse_args(arguments)
     try:
         configuration = BridgeConfiguration(parsed.config)
+        if parsed.operation == "validate":
+            transport = configuration.resolve_runtime_profile(parsed.profile)
+            server_profile = configuration.server_profile(
+                parsed.server,
+                path_override=parsed.path_profile,
+            )
+            if parsed.require_command_bridge and server_profile.command_bridge is None:
+                raise BridgeError(
+                    f"server {parsed.server!r} path profile has no command_bridge"
+                )
+            json.dump(
+                {
+                    "profile": transport.name,
+                    "server": server_profile.server,
+                    "status": "valid",
+                },
+                sys.stdout,
+                separators=(",", ":"),
+            )
+            sys.stdout.write("\n")
+            return 0
         command = _command_arguments(parsed)
         if parsed.operation == "client-command":
             rendered = build_client_command(
