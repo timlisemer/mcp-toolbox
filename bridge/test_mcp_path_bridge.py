@@ -364,9 +364,6 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_validate_checks_the_selected_config_and_staged_server_profile(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
-        environment = os.environ.copy()
-        environment.update({"WSL": "1", "WSL_DISTRO_NAME": "nixos"})
-
         completed = subprocess.run(
             [
                 sys.executable,
@@ -384,7 +381,7 @@ class ConfigurationTests(unittest.TestCase):
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=environment,
+            env={},
             check=False,
         )
 

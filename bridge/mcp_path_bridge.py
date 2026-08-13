@@ -1234,7 +1234,7 @@ def _parser() -> argparse.ArgumentParser:
     command_proxy.add_argument("command", nargs=argparse.REMAINDER)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--config", required=True, type=Path)
-    validate.add_argument("--profile")
+    validate.add_argument("--profile", required=True)
     validate.add_argument("--server", required=True)
     validate.add_argument("--path-profile", required=True, type=Path)
     validate.add_argument("--require-command-bridge", action="store_true")
@@ -1248,7 +1248,11 @@ def main(arguments: Sequence[str] | None = None) -> int:
     try:
         configuration = BridgeConfiguration(parsed.config)
         if parsed.operation == "validate":
-            transport = configuration.resolve_runtime_profile(parsed.profile)
+            transport = configuration.profiles.get(parsed.profile)
+            if transport is None:
+                raise BridgeError(
+                    f"bridge profile {parsed.profile!r} does not exist"
+                )
             server_profile = configuration.server_profile(
                 parsed.server,
                 path_override=parsed.path_profile,
