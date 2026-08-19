@@ -245,17 +245,19 @@ Each path mapping declares an `execution_host`. The value is `windows` when
 Windows owns the mapped files. It is `linux` when Linux owns them. Agent
 Framework sends every repository command through one generic command bridge.
 The bridge receives the executable, arguments, working directory, and explicit
-environment changes. It does not contain a list of tool names. For a WSL
-profile, it starts a Windows executable through PowerShell when the working
-directory has a Windows execution host. It starts the Linux executable when
-the working directory has a Linux execution host.
+environment changes. A command can also declare that its standard output is
+one filesystem path. The bridge translates only this typed output and keeps
+all other command output unchanged. It does not contain a list of tool names.
+For a WSL profile, it starts a Windows executable through PowerShell when the
+working directory has a Windows execution host. It starts the Linux executable
+when the working directory has a Linux execution host.
 
 The example file at `config/windows-bridge.example.json` has two execution
 profiles:
 
 - `wsl` uses `wsl.exe -d nixos`. Its example mappings cover the `C:` and `D:`
-  drives and one explicit WSL UNC prefix. Windows owns the drive mappings.
-  Linux owns the WSL UNC mapping.
+  drives and the WSL UNC root. Windows owns the drive mappings. Linux owns the
+  WSL UNC mapping, which covers the complete Linux filesystem.
 - `windows-remote` uses SSH. Its Windows and Linux prefixes are explicit
   configuration data. The bridge does not infer Linux paths from drive
   letters or select an execution host in this profile.
@@ -297,8 +299,9 @@ It compares Windows prefixes without case sensitivity. It uses the longest
 full-component match. It converts separators and components in relative
 Windows paths. It rejects ambiguous drive-relative and rooted-relative paths,
 unmapped absolute Windows paths, Windows device paths, and UNC paths with no
-explicit mapping. It converts declared Linux result paths back to Windows paths.
-Normal messages, logs, command output, and text results stay unchanged.
+explicit mapping. It converts declared Linux result paths and declared
+single-path command output back across the boundary. Normal messages, logs,
+opaque command output, and text results stay unchanged.
 
 ## Blender add-on
 

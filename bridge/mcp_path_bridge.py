@@ -607,6 +607,7 @@ def run_command_proxy(
     environment_mode: str,
     environment_entries: Sequence[Sequence[str]],
     removed_environment: Sequence[str],
+    stdout_path: bool,
 ) -> None:
     """Run one child command on the host that owns its working directory."""
 
@@ -661,20 +662,48 @@ def run_command_proxy(
     encoded_script = base64.b64encode(
         WINDOWS_COMMAND_SCRIPT.encode("utf-16-le")
     ).decode("ascii")
-    os.execve(
+    powershell_command = [
         powershell,
-        [
-            powershell,
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-OutputFormat",
-            "Text",
-            "-EncodedCommand",
-            encoded_script,
-        ],
-        windows_environment,
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-OutputFormat",
+        "Text",
+        "-EncodedCommand",
+        encoded_script,
+    ]
+    if not stdout_path:
+        os.execve(powershell, powershell_command, windows_environment)
+
+    process = subprocess.Popen(
+        powershell_command,
+        stdin=None,
+        stdout=subprocess.PIPE,
+        stderr=None,
+        env=windows_environment,
     )
+    if process.stdout is None:
+        _terminate(process)
+        raise BridgeError("could not capture the Windows path output")
+    output = process.stdout.read(MAXIMUM_MESSAGE_BYTES + 1)
+    process.stdout.close()
+    if len(output) > MAXIMUM_MESSAGE_BYTES:
+        _terminate(process)
+        process.wait()
+        raise BridgeError("Windows path output exceeded the bridge boundary")
+    return_code = process.wait()
+    if return_code != 0:
+        raise ChildExit(return_code)
+    try:
+        path_output = output.decode("utf-8").strip()
+    except UnicodeDecodeError as error:
+        raise BridgeError("Windows path output is not valid UTF-8") from error
+    if not path_output:
+        return
+    if "\n" in path_output or "\r" in path_output or "\0" in path_output:
+        raise BridgeError("Windows path output must contain one path")
+    sys.stdout.write(f"{transport.path_map.to_linux(path_output)}\n")
+    sys.stdout.flush()
 
 
 def _translate_command_path(value: str, path_map: PathMap) -> str:
@@ -1231,6 +1260,7 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         metavar="NAME",
     )
+    command_proxy.add_argument("--stdout-path", action="store_true")
     command_proxy.add_argument("command", nargs=argparse.REMAINDER)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--config", required=True, type=Path)
@@ -1293,6 +1323,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 parsed.environment_mode,
                 parsed.environment,
                 parsed.remove_environment,
+                parsed.stdout_path,
             )
             return 0
         server_profile = configuration.server_profile(

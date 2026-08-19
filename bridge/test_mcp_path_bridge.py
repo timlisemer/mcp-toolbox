@@ -46,8 +46,8 @@ class PathMapTests(unittest.TestCase):
                     "execution_host": "windows",
                 },
                 {
-                    "windows_prefix": "\\\\wsl.localhost\\nixos\\home",
-                    "linux_prefix": "/home",
+                    "windows_prefix": "\\\\wsl.localhost\\nixos",
+                    "linux_prefix": "/",
                     "execution_host": "linux",
                 },
             ]
@@ -103,6 +103,10 @@ class PathMapTests(unittest.TestCase):
             self.path_map.to_linux(r"\\wsl.localhost\nixos\home\tim\Coding"),
             "/home/tim/Coding",
         )
+        self.assertEqual(
+            self.path_map.to_windows("/tmp/review-index"),
+            r"\\wsl.localhost\nixos\tmp\review-index",
+        )
         with self.assertRaisesRegex(BridgeError, "no mapping"):
             self.path_map.to_linux(r"\\server\share\file")
 
@@ -112,8 +116,10 @@ class PathMapTests(unittest.TestCase):
             r"D:\repo\nested\source\main.py",
         )
         self.assertEqual(self.path_map.to_windows("relative/file"), "relative/file")
-        with self.assertRaisesRegex(BridgeError, "no mapping"):
-            self.path_map.to_windows("/unmapped/file")
+        self.assertEqual(
+            self.path_map.to_windows("/unmapped/file"),
+            r"\\wsl.localhost\nixos\unmapped\file",
+        )
 
 
 class MessageTranslationTests(unittest.TestCase):
@@ -541,6 +547,54 @@ class ConfigurationTests(unittest.TestCase):
                     "value": r"Z:\bridge-test\.git\index",
                 }
             ],
+        )
+
+    def test_command_proxy_translates_declared_windows_path_output(self) -> None:
+        bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
+        fake_directory = Path(self.temporary.name) / "fake-path-output-bin"
+        fake_directory.mkdir()
+        fake_powershell = fake_directory / "powershell.exe"
+        fake_powershell.write_text(
+            f"#!{sys.executable}\n"
+            "print(r'Z:\\bridge-test\\project')\n",
+            encoding="utf-8",
+        )
+        fake_powershell.chmod(0o755)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "PATH": f"{fake_directory}{os.pathsep}{environment['PATH']}",
+                "WSL": "1",
+                "WSL_DISTRO_NAME": "nixos",
+            }
+        )
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(bridge_script),
+                "command",
+                "--config",
+                str(self.configuration_path),
+                "--profile",
+                "wsl",
+                "--environment-mode",
+                "overlay",
+                "--stdout-path",
+                "--",
+                "arbitrary-tool",
+            ],
+            cwd=self.temporary.name,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        self.assertEqual(
+            completed.stdout,
+            f"{Path(self.temporary.name) / 'project'}\n".encode(),
         )
 
     def test_command_proxy_applies_target_environment_only_to_linux_command(self) -> None:

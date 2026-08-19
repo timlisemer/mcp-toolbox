@@ -15,8 +15,8 @@
           "execution_host": "windows"
         },
         {
-          "windows_prefix": "\\\\wsl.localhost\\nixos\\home",
-          "linux_prefix": "/home",
+          "windows_prefix": "\\\\wsl.localhost\\nixos",
+          "linux_prefix": "/",
           "execution_host": "linux"
         }
       ]
