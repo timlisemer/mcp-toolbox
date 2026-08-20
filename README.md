@@ -279,6 +279,7 @@ Windows MCP or hook client. This example produces the WSL MCP command:
   --server agent-framework \
   --mode mcp-stdio \
   --bridge-command /path/to/mcp-path-bridge \
+  --client-working-directory 'D:\repository' \
   -- /path/to/agent-framework-mcp
 ```
 
@@ -291,6 +292,7 @@ This example produces the remote hook command:
   --server agent-framework \
   --mode hook \
   --bridge-command /path/to/mcp-path-bridge \
+  --client-working-directory 'D:\repository' \
   -- /path/to/agent-framework-tool-policy-hook tool-policy-hook
 ```
 

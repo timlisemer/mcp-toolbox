@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ from mcp_path_bridge import (
     PathMap,
     ServerPathProfile,
     build_client_command,
+    _resolve_child_working_directory,
     translate_hook_request,
     translate_mcp_request,
     translate_mcp_response,
@@ -140,7 +142,7 @@ class MessageTranslationTests(unittest.TestCase):
             request_fields=("/working_dir", "/transcript_path"),
             result_fields=("/structuredContent/path", "/paths/*/location"),
             hook=HookFields(
-                request_fields=("/transcript_path",),
+                request_fields=("/cwd", "/transcript_path"),
                 result_fields=("/result/path",),
                 tool_calls=(
                     HookToolCall(
@@ -202,6 +204,7 @@ class MessageTranslationTests(unittest.TestCase):
 
     def test_generic_hook_envelopes_translate_root_and_matching_tool_calls(self) -> None:
         direct = {
+            "cwd": r"D:\repo\project",
             "transcript_path": r"D:\repo\.codex\session.jsonl",
             "tool_name": "mcp__agent-framework__check",
             "tool_input": {"working_dir": r"D:\repo\project"},
@@ -211,6 +214,7 @@ class MessageTranslationTests(unittest.TestCase):
         self.assertEqual(
             translated_direct["transcript_path"], "/srv/repo/.codex/session.jsonl"
         )
+        self.assertEqual(translated_direct["cwd"], "/srv/repo/project")
         self.assertEqual(
             translated_direct["tool_input"]["working_dir"], "/srv/repo/project"
         )
@@ -352,9 +356,20 @@ class ConfigurationTests(unittest.TestCase):
             "mcp-stdio",
             "agent-framework",
             "/run/current-system/sw/bin/mcp-path-bridge",
+            r"C:\work\project",
             ["/opt/agent-framework/bin/agent-framework-mcp"],
         )
         self.assertEqual(wsl_command["command"], "wsl.exe")
+        self.assertEqual(
+            wsl_command["args"][:4],
+            [
+                "-d",
+                "nixos",
+                "--",
+                "/run/current-system/sw/bin/mcp-path-bridge",
+            ],
+        )
+        self.assertIn("/mnt/c/work/project", wsl_command["args"])
         self.assertIn("mcp-stdio", wsl_command["args"])
         remote_command = build_client_command(
             self.configuration,
@@ -362,11 +377,86 @@ class ConfigurationTests(unittest.TestCase):
             "hook",
             "agent-framework",
             "/run/current-system/sw/bin/mcp-path-bridge",
+            r"D:\work\project",
             ["/opt/agent-framework/bin/agent-framework-tool-policy-hook"],
         )
         self.assertEqual(remote_command["command"], "ssh")
         self.assertEqual(remote_command["args"][:2], ["-p", "2222"])
+        self.assertEqual(
+            shlex.split(remote_command["args"][-1])[:3],
+            [
+                "exec",
+                "/run/current-system/sw/bin/mcp-path-bridge",
+                "hook",
+            ],
+        )
+        self.assertIn("/srv/work/project", remote_command["args"][-1])
         self.assertIn(" hook ", remote_command["args"][-1])
+
+    def test_client_command_requires_a_mapped_absolute_client_directory(self) -> None:
+        for client_directory in ("relative", r"Z:\unmapped"):
+            with self.subTest(client_directory=client_directory):
+                with self.assertRaises(BridgeError):
+                    build_client_command(
+                        self.configuration,
+                        "wsl",
+                        "mcp-stdio",
+                        "agent-framework",
+                        "/run/current-system/sw/bin/mcp-path-bridge",
+                        client_directory,
+                        ["/opt/agent-framework/bin/agent-framework-mcp"],
+                    )
+
+    def test_client_command_cli_renders_remote_working_directory_contract(
+        self,
+    ) -> None:
+        bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(bridge_script),
+                "client-command",
+                "--config",
+                str(self.configuration_path),
+                "--profile",
+                "windows-remote",
+                "--server",
+                "agent-framework",
+                "--mode",
+                "mcp-stdio",
+                "--bridge-command",
+                "/run/current-system/sw/bin/mcp-path-bridge",
+                "--client-working-directory",
+                r"D:\work\project with spaces",
+                "--",
+                "/opt/agent-framework/bin/agent-framework-mcp",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        rendered = json.loads(completed.stdout)
+        self.assertEqual(rendered["command"], "ssh")
+        self.assertEqual(
+            shlex.split(rendered["args"][-1]),
+            [
+                "exec",
+                "/run/current-system/sw/bin/mcp-path-bridge",
+                "mcp-stdio",
+                "--config",
+                str(self.configuration_path),
+                "--profile",
+                "windows-remote",
+                "--server",
+                "agent-framework",
+                "--client-working-directory",
+                "/srv/work/project with spaces",
+                "--",
+                "/opt/agent-framework/bin/agent-framework-mcp",
+            ],
+        )
 
     def test_validate_checks_the_selected_config_and_staged_server_profile(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
@@ -414,6 +504,7 @@ class ConfigurationTests(unittest.TestCase):
             "    message = json.loads(input_line)\n"
             "    message['host_command_bridge'] = "
             "os.environ.get('TEST_HOST_COMMAND_BRIDGE')\n"
+            "    message['child_working_directory'] = os.getcwd()\n"
             "    sys.stdout.buffer.write((json.dumps(message) + '\\n').encode())\n"
             "    sys.stdout.buffer.flush()\n"
         )
@@ -430,6 +521,8 @@ class ConfigurationTests(unittest.TestCase):
                 "wsl",
                 "--server",
                 "agent-framework",
+                "--client-working-directory",
+                r"Z:\bridge-test",
                 "--",
                 sys.executable,
                 "-c",
@@ -448,6 +541,33 @@ class ConfigurationTests(unittest.TestCase):
         )
         command_bridge = json.loads(observed["host_command_bridge"])
         self.assertEqual(command_bridge["command"][-2:], ["--profile", "wsl"])
+        self.assertEqual(
+            observed["child_working_directory"],
+            str(Path(self.temporary.name).resolve()),
+        )
+
+    def test_proxy_uses_explicit_client_working_directory(self) -> None:
+        mapped_directory = Path(self.temporary.name) / "client"
+        mapped_directory.mkdir()
+        path_map = PathMap(
+            [
+                {
+                    "windows_prefix": "Z:\\bridge-test",
+                    "linux_prefix": self.temporary.name,
+                    "execution_host": "windows",
+                }
+            ]
+        )
+        resolved = _resolve_child_working_directory(
+            path_map,
+            r"Z:\bridge-test\client",
+        )
+        self.assertEqual(resolved, mapped_directory.resolve())
+
+    def test_proxy_rejects_a_relative_client_working_directory(self) -> None:
+        path_map = self.configuration.profiles["wsl"].path_map
+        with self.assertRaisesRegex(BridgeError, "must be absolute"):
+            _resolve_child_working_directory(path_map, "relative")
 
     def test_hook_proxy_is_provider_neutral_and_translates_before_child_access(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
@@ -457,10 +577,13 @@ class ConfigurationTests(unittest.TestCase):
             "tool_input": {},
         }
         child_program = (
-            "import json, sys\n"
+            "import json, os, sys\n"
             "request = json.load(sys.stdin)\n"
-            "json.dump({'observed_path': request['transcript_path']}, sys.stdout)\n"
+            "json.dump({'observed_path': request['transcript_path'], "
+            "'working_directory': os.getcwd()}, sys.stdout)\n"
         )
+        mapped_directory = Path(self.temporary.name) / "hook-client"
+        mapped_directory.mkdir()
         completed = subprocess.run(
             [
                 sys.executable,
@@ -472,6 +595,8 @@ class ConfigurationTests(unittest.TestCase):
                 "windows-remote",
                 "--server",
                 "agent-framework",
+                "--client-working-directory",
+                r"Z:\bridge-test\hook-client",
                 "--",
                 sys.executable,
                 "-c",
@@ -485,6 +610,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr.decode())
         observed = json.loads(completed.stdout)
         self.assertEqual(observed["observed_path"], "/srv/work/sessions/thread.jsonl")
+        self.assertEqual(observed["working_directory"], str(mapped_directory))
 
     def test_command_proxy_routes_any_executable_to_the_declared_windows_host(self) -> None:
         bridge_script = Path(__file__).with_name("mcp_path_bridge.py")
@@ -648,6 +774,8 @@ class ConfigurationTests(unittest.TestCase):
                 "windows-remote",
                 "--server",
                 "agent-framework",
+                "--client-working-directory",
+                r"Z:\bridge-test",
                 "--",
                 sys.executable,
                 "-c",

@@ -487,6 +487,7 @@ def run_mcp_proxy(
     profile: ServerPathProfile,
     transport: TransportProfile,
     configuration_path: Path,
+    client_working_directory: str,
 ) -> None:
     """Run a newline-delimited MCP proxy until both standard streams close."""
 
@@ -507,7 +508,10 @@ def run_mcp_proxy(
             bridge_configuration,
             separators=(",", ":"),
         )
-    process = _spawn(command, child_environment)
+    child_working_directory = _resolve_child_working_directory(
+        transport.path_map, client_working_directory
+    )
+    process = _spawn(command, child_environment, child_working_directory)
     if process.stdin is None or process.stdout is None:
         raise BridgeError("could not open proxied MCP standard streams")
     request_errors: list[Exception] = []
@@ -565,7 +569,10 @@ def run_mcp_proxy(
 
 
 def run_hook_proxy(
-    command: Sequence[str], profile: ServerPathProfile, path_map: PathMap
+    command: Sequence[str],
+    profile: ServerPathProfile,
+    path_map: PathMap,
+    client_working_directory: str,
 ) -> None:
     """Run one bounded JSON hook request and response."""
 
@@ -577,11 +584,15 @@ def run_hook_proxy(
     request = _decode_json(request_bytes, "hook request")
     translated_request = translate_hook_request(request, profile, path_map)
     encoded_request = _encode_json(translated_request)
+    child_working_directory = _resolve_child_working_directory(
+        path_map, client_working_directory
+    )
     process = subprocess.run(
         list(command),
         input=encoded_request,
         stdout=subprocess.PIPE,
         stderr=None,
+        cwd=child_working_directory,
         check=False,
     )
     if process.returncode != 0:
@@ -721,6 +732,7 @@ def build_client_command(
     mode: str,
     server_name: str,
     bridge_command: str,
+    client_working_directory: str,
     server_command: Sequence[str],
 ) -> dict[str, Any]:
     """Build a Windows launch command for any MCP or hook-capable client."""
@@ -729,6 +741,9 @@ def build_client_command(
     if profile is None:
         raise BridgeError(f"bridge profile {profile_name!r} does not exist")
     configuration.server_profile(server_name, require_hook=mode == "hook")
+    mapped_working_directory = _mapped_linux_working_directory(
+        profile.path_map, client_working_directory
+    )
     inner_arguments = [
         bridge_command,
         mode,
@@ -738,6 +753,8 @@ def build_client_command(
         profile_name,
         "--server",
         server_name,
+        "--client-working-directory",
+        mapped_working_directory,
         "--",
         *server_command,
     ]
@@ -751,9 +768,8 @@ def build_client_command(
             arguments.extend(["-p", str(profile.ssh_port)])
         if profile.ssh_identity_file is not None:
             arguments.extend(["-i", profile.ssh_identity_file])
-        arguments.extend(
-            [str(profile.ssh_host), shlex.join(["exec", *inner_arguments])]
-        )
+        remote_command = shlex.join(["exec", *inner_arguments])
+        arguments.extend([str(profile.ssh_host), remote_command])
     return {
         "profile": profile_name,
         "transport": profile.kind,
@@ -827,7 +843,9 @@ def _forward_encoded_json(
 
 
 def _spawn(
-    command: Sequence[str], environment: Mapping[str, str] | None = None
+    command: Sequence[str],
+    environment: Mapping[str, str] | None = None,
+    working_directory: Path | None = None,
 ) -> subprocess.Popen[bytes]:
     if not command:
         raise BridgeError("a proxied command is required after --")
@@ -837,7 +855,49 @@ def _spawn(
         stdout=subprocess.PIPE,
         stderr=None,
         env=environment,
+        cwd=working_directory,
     )
+
+
+def _resolve_child_working_directory(
+    path_map: PathMap, client_working_directory: str
+) -> Path:
+    """Resolve the required mapped directory for one proxied child process."""
+
+    mapped_directory = _mapped_linux_working_directory(
+        path_map, client_working_directory
+    )
+    return _verified_linux_working_directory(mapped_directory, path_map)
+
+
+def _mapped_linux_working_directory(
+    path_map: PathMap, client_working_directory: str
+) -> str:
+    mapped_directory = path_map.to_linux(client_working_directory)
+    if not mapped_directory.startswith("/"):
+        raise BridgeError("client working directory must be absolute")
+    path_map.execution_host(mapped_directory)
+    return mapped_directory
+
+
+def _verified_linux_working_directory(
+    path_value: str, path_map: PathMap
+) -> Path:
+    candidate = Path(path_value)
+    if not candidate.is_absolute():
+        raise BridgeError("client working directory must be absolute")
+    try:
+        canonical_directory = candidate.resolve(strict=True)
+    except OSError as error:
+        raise BridgeError(
+            f"client working directory is unavailable: {path_value!r}"
+        ) from error
+    if not canonical_directory.is_dir():
+        raise BridgeError(
+            f"client working directory is not a directory: {path_value!r}"
+        )
+    path_map.execution_host(str(canonical_directory))
+    return canonical_directory
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:
@@ -1225,6 +1285,7 @@ def _parser() -> argparse.ArgumentParser:
         proxy.add_argument("--config", required=True, type=Path)
         proxy.add_argument("--profile")
         proxy.add_argument("--server", required=True)
+        proxy.add_argument("--client-working-directory", required=True)
         proxy.add_argument("command", nargs=argparse.REMAINDER)
         proxy.set_defaults(boundary_mode=boundary_mode)
     client = subparsers.add_parser("client-command")
@@ -1238,6 +1299,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=("mcp-stdio", "hook"),
     )
     client.add_argument("--bridge-command", required=True)
+    client.add_argument("--client-working-directory", required=True)
     client.add_argument("command", nargs=argparse.REMAINDER)
     command_proxy = subparsers.add_parser("command")
     command_proxy.add_argument("--config", required=True, type=Path)
@@ -1310,6 +1372,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 parsed.boundary_mode,
                 parsed.server,
                 parsed.bridge_command,
+                parsed.client_working_directory,
                 command,
             )
             json.dump(rendered, sys.stdout, indent=2)
@@ -1335,9 +1398,15 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 server_profile,
                 transport,
                 configuration.path,
+                parsed.client_working_directory,
             )
         else:
-            run_hook_proxy(command, server_profile, transport.path_map)
+            run_hook_proxy(
+                command,
+                server_profile,
+                transport.path_map,
+                parsed.client_working_directory,
+            )
         return 0
     except ChildExit as error:
         print(f"mcp-path-bridge: {error}", file=sys.stderr)
