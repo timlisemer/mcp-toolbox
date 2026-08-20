@@ -125,7 +125,7 @@
       "description": "Native agent workflows for checking, planning, implementation, review, and Git operations",
       "repository": "https://github.com/timlisemer/agent-framework-rs",
       "private_repository": true,
-      "build_command": "CARGO_INCREMENTAL=0 cargo run --release --locked --package workspace-quality -- generate && CARGO_INCREMENTAL=0 cargo build --release --locked --package agent-framework-mcp && CARGO_INCREMENTAL=0 cargo build --release --locked --package unified-agent-sdk --features codex --bin agent-framework-tool-policy-hook && mkdir -p bin && install -m 755 \"$CARGO_TARGET_DIR/release/agent-framework-mcp\" bin/agent-framework-mcp && install -m 755 \"$CARGO_TARGET_DIR/release/agent-framework-tool-policy-hook\" bin/agent-framework-tool-policy-hook && test -s bridge/agent-framework-paths.json && rm -rf .git crates Cargo.lock Cargo.toml justfile",
+      "build_command": "CARGO_INCREMENTAL=0 cargo run --release --locked --package workspace-quality -- generate && CARGO_INCREMENTAL=0 cargo build --release --locked --package agent-framework-mcp --bins && mkdir -p bin && install -m 755 \"$CARGO_TARGET_DIR/release/agent-framework-mcp\" bin/agent-framework-mcp && install -m 755 \"$CARGO_TARGET_DIR/release/agent-framework-tool-policy-hook\" bin/agent-framework-tool-policy-hook && test -s bridge/agent-framework-paths.json && rm -rf .git crates Cargo.lock Cargo.toml justfile",
       "binary_path": "bin/agent-framework-mcp",
       "install_path": "bin/agent-framework-mcp",
       "capabilities": [
