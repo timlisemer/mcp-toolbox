@@ -105,7 +105,7 @@ AI. Disabled mode needs no AI binaries, account, configuration, or mounts.
 The base Compose file needs no AI setup. If AI is enabled but cannot start,
 the container reports the failure and stays available for other tools.
 
-The bundle uses revision `1b5b7d1b0533749b632f30f7d04950f284462f42` from
+The bundle uses revision `2bfd7f988d730886996aecb73b2c1f9f39ccc44d` from the `main` branch of
 `https://github.com/timlisemer/agent-framework-rs`. This is still the upstream
 repository. Builds use locked dependencies and run `workspace-quality generate`.
 
