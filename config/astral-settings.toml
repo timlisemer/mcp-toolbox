@@ -1,0 +1,9 @@
+version = 2
+
+[settings.ai]
+enable = true
+defaultModelTier = "sonnet"
+
+[settings.ai.host]
+enable = true
+allowNetworkAccess = false

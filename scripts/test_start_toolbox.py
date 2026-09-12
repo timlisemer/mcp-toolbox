@@ -99,7 +99,8 @@ class StartupTests(unittest.TestCase):
         self.wait_for(lambda: bool(self.events.read_text()))
         self.assertEqual(
             json.loads(self.events.read_text()),
-            ["serve", "--mode", "docker", "--control-dir", "/var/lib/astral-ai/control",
+            ["serve", "--settings", "/app/config/astral-settings.toml",
+             "--mode", "docker", "--control-dir", "/var/lib/astral-ai/control",
              "--data-dir", "/var/lib/astral-ai/data", "--socket",
              "/var/lib/astral-ai/data/service.sock"],
         )

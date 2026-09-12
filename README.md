@@ -105,7 +105,7 @@ AI. Disabled mode needs no AI binaries, account, configuration, or mounts.
 The base Compose file needs no AI setup. If AI is enabled but cannot start,
 the container reports the failure and stays available for other tools.
 
-The bundle uses revision `2bfd7f988d730886996aecb73b2c1f9f39ccc44d` from the `main` branch of
+The bundle uses revision `88380d3f45f710b57128d280aefb6b06090a4e38` from the `main` branch of
 `https://github.com/timlisemer/agent-framework-rs`. This is still the upstream
 repository. Builds use locked dependencies and run `workspace-quality generate`.
 
@@ -157,10 +157,16 @@ Ordinary startup does not run these setup commands. Do not use `down -v` if you
 need to keep the AI data volume. Use both Compose files for AI container
 operations; the `just run` and `just restart` commands use only the base file.
 
+Edit `config/astral-settings.toml` before building the image. It uses the same
+settings format that Astral's Nix options generate. The service reads this file
+directly. The supplied file selects the `sonnet` model tier and disables host
+network access.
+
 When enabled, `scripts/start-toolbox.sh` starts one service:
 
 ```bash
 /app/tools/astral-ai/bin/astral-ai serve \
+  --settings /app/config/astral-settings.toml \
   --mode docker \
   --control-dir /var/lib/astral-ai/control \
   --data-dir /var/lib/astral-ai/data \

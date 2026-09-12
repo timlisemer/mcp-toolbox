@@ -5,6 +5,7 @@ if ! jq -e '.tools["astral-ai"].enabled == true' /app/config/servers.json >/dev/
 fi
 
 /app/tools/astral-ai/bin/astral-ai serve \
+    --settings /app/config/astral-settings.toml \
     --mode docker \
     --control-dir /var/lib/astral-ai/control \
     --data-dir /var/lib/astral-ai/data \
