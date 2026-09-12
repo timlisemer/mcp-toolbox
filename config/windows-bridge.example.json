@@ -42,10 +42,10 @@
     }
   },
   "servers": {
-    "agent-framework": {
+    "astral-ai": {
       "enabled": true,
       "hook_bridge": true,
-      "path_profile": "/path/to/agent-framework/bridge/agent-framework-paths.json"
+      "path_profile": "/path/to/astral-ai/bridge/astral-ai-paths.json"
     },
     "blender": {
       "enabled": false,

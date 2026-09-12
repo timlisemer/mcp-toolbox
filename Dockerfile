@@ -14,7 +14,7 @@ RUN mkdir -p /app/tools /app/config /app/bin
 # Copy configuration and build scripts
 COPY config/ /app/config/
 COPY patches/ /app/patches/
-COPY scripts/install.sh /app/scripts/
+COPY scripts/install.sh scripts/start-toolbox.sh /app/scripts/
 COPY bridge/mcp_path_bridge.py /app/bin/mcp-path-bridge
 RUN chmod +x /app/scripts/*.sh /app/bin/mcp-path-bridge
 
@@ -26,5 +26,5 @@ RUN --mount=type=secret,id=github_token \
     --mount=type=cache,id=mcp-toolbox-cargo-target,target=/app/cargo-target,sharing=locked \
     CARGO_TARGET_DIR=/app/cargo-target /run/current-system/sw/bin/bash /app/scripts/install.sh
 
-# Stay alive for docker exec access - tools are invoked on-demand
-CMD ["/run/current-system/sw/bin/tail", "-f", "/dev/null"]
+# Start the optional AI service and keep docker exec access available.
+CMD ["/run/current-system/sw/bin/bash", "/app/scripts/start-toolbox.sh"]

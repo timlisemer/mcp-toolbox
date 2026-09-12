@@ -1,0 +1,8 @@
+services:
+  mcp-toolbox:
+    volumes:
+      - /var/lib/astral-ai/control:/var/lib/astral-ai/control
+      - astral-ai-data:/var/lib/astral-ai/data
+
+volumes:
+  astral-ai-data:

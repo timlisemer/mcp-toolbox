@@ -138,7 +138,7 @@ class MessageTranslationTests(unittest.TestCase):
             ]
         )
         self.profile = ServerPathProfile(
-            server="agent-framework",
+            server="astral-ai",
             request_fields=("/working_dir", "/transcript_path"),
             result_fields=("/structuredContent/path", "/paths/*/location"),
             hook=HookFields(
@@ -148,12 +148,12 @@ class MessageTranslationTests(unittest.TestCase):
                     HookToolCall(
                         "/tool_name",
                         "/tool_input",
-                        ("mcp__agent-framework__*",),
+                        ("mcp__astral-ai__*",),
                     ),
                     HookToolCall(
                         "/request/input/tool_name",
                         "/request/input/tool_input",
-                        ("mcp__agent-framework__*",),
+                        ("mcp__astral-ai__*",),
                     ),
                 ),
             ),
@@ -206,7 +206,7 @@ class MessageTranslationTests(unittest.TestCase):
         direct = {
             "cwd": r"D:\repo\project",
             "transcript_path": r"D:\repo\.codex\session.jsonl",
-            "tool_name": "mcp__agent-framework__check",
+            "tool_name": "mcp__astral-ai__check",
             "tool_input": {"working_dir": r"D:\repo\project"},
             "message": r"Keep D:\repo\project",
         }
@@ -223,7 +223,7 @@ class MessageTranslationTests(unittest.TestCase):
         nested = {
             "request": {
                 "input": {
-                    "tool_name": "mcp__agent-framework__check",
+                    "tool_name": "mcp__astral-ai__check",
                     "tool_input": {"working_dir": r"D:\repo\nested"},
                 }
             }
@@ -251,11 +251,11 @@ class ConfigurationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         directory = Path(self.temporary.name)
-        path_profile = directory / "agent-framework-paths.json"
+        path_profile = directory / "astral-ai-paths.json"
         path_profile.write_text(
             json.dumps(
                 {
-                    "server": "agent-framework",
+                    "server": "astral-ai",
                     "request_fields": ["/working_dir"],
                     "result_fields": [],
                     "command_bridge": {
@@ -309,7 +309,7 @@ class ConfigurationTests(unittest.TestCase):
                         },
                     },
                     "servers": {
-                        "agent-framework": {
+                        "astral-ai": {
                             "enabled": True,
                             "hook_bridge": True,
                             "path_profile": path_profile.name,
@@ -354,10 +354,10 @@ class ConfigurationTests(unittest.TestCase):
             self.configuration,
             "wsl",
             "mcp-stdio",
-            "agent-framework",
+            "astral-ai",
             "/run/current-system/sw/bin/mcp-path-bridge",
             r"C:\work\project",
-            ["/opt/agent-framework/bin/agent-framework-mcp"],
+            ["/opt/astral-ai/bin/astral-ai-mcp"],
         )
         self.assertEqual(wsl_command["command"], "wsl.exe")
         self.assertEqual(
@@ -375,10 +375,10 @@ class ConfigurationTests(unittest.TestCase):
             self.configuration,
             "windows-remote",
             "hook",
-            "agent-framework",
+            "astral-ai",
             "/run/current-system/sw/bin/mcp-path-bridge",
             r"D:\work\project",
-            ["/opt/agent-framework/bin/agent-framework-tool-policy-hook"],
+            ["/opt/astral-ai/bin/astral-ai-tool-policy-hook"],
         )
         self.assertEqual(remote_command["command"], "ssh")
         self.assertEqual(remote_command["args"][:2], ["-p", "2222"])
@@ -401,10 +401,10 @@ class ConfigurationTests(unittest.TestCase):
                         self.configuration,
                         "wsl",
                         "mcp-stdio",
-                        "agent-framework",
+                        "astral-ai",
                         "/run/current-system/sw/bin/mcp-path-bridge",
                         client_directory,
-                        ["/opt/agent-framework/bin/agent-framework-mcp"],
+                        ["/opt/astral-ai/bin/astral-ai-mcp"],
                     )
 
     def test_client_command_cli_renders_remote_working_directory_contract(
@@ -421,7 +421,7 @@ class ConfigurationTests(unittest.TestCase):
                 "--profile",
                 "windows-remote",
                 "--server",
-                "agent-framework",
+                "astral-ai",
                 "--mode",
                 "mcp-stdio",
                 "--bridge-command",
@@ -429,7 +429,7 @@ class ConfigurationTests(unittest.TestCase):
                 "--client-working-directory",
                 r"D:\work\project with spaces",
                 "--",
-                "/opt/agent-framework/bin/agent-framework-mcp",
+                "/opt/astral-ai/bin/astral-ai-mcp",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -450,11 +450,11 @@ class ConfigurationTests(unittest.TestCase):
                 "--profile",
                 "windows-remote",
                 "--server",
-                "agent-framework",
+                "astral-ai",
                 "--client-working-directory",
                 "/srv/work/project with spaces",
                 "--",
-                "/opt/agent-framework/bin/agent-framework-mcp",
+                "/opt/astral-ai/bin/astral-ai-mcp",
             ],
         )
 
@@ -470,9 +470,9 @@ class ConfigurationTests(unittest.TestCase):
                 "--profile",
                 "wsl",
                 "--server",
-                "agent-framework",
+                "astral-ai",
                 "--path-profile",
-                str(Path(self.temporary.name) / "agent-framework-paths.json"),
+                str(Path(self.temporary.name) / "astral-ai-paths.json"),
                 "--require-command-bridge",
             ],
             stdout=subprocess.PIPE,
@@ -484,7 +484,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr.decode())
         self.assertEqual(
             json.loads(completed.stdout),
-            {"profile": "wsl", "server": "agent-framework", "status": "valid"},
+            {"profile": "wsl", "server": "astral-ai", "status": "valid"},
         )
 
     def test_mcp_proxy_translates_before_the_child_reads_the_request(self) -> None:
@@ -520,7 +520,7 @@ class ConfigurationTests(unittest.TestCase):
                 "--profile",
                 "wsl",
                 "--server",
-                "agent-framework",
+                "astral-ai",
                 "--client-working-directory",
                 r"Z:\bridge-test",
                 "--",
@@ -594,7 +594,7 @@ class ConfigurationTests(unittest.TestCase):
                 "--profile",
                 "windows-remote",
                 "--server",
-                "agent-framework",
+                "astral-ai",
                 "--client-working-directory",
                 r"Z:\bridge-test\hook-client",
                 "--",
@@ -773,7 +773,7 @@ class ConfigurationTests(unittest.TestCase):
                 "--profile",
                 "windows-remote",
                 "--server",
-                "agent-framework",
+                "astral-ai",
                 "--client-working-directory",
                 r"Z:\bridge-test",
                 "--",

@@ -62,14 +62,18 @@ test:
     @bash scripts/test-playwright.sh
     @echo "  PASS"
     @echo ""
-    @echo "agent-framework-rs release bundle:"
-    @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-mcp
-    @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-mcp
-    @docker exec mcp-toolbox test -x /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
-    @docker exec mcp-toolbox test ! -L /app/tools/agent-framework/bin/agent-framework-tool-policy-hook
-    @docker exec mcp-toolbox test -s /app/tools/agent-framework/bridge/agent-framework-paths.json
     @docker exec mcp-toolbox sh -eu -c '\
-        skills_dir=/app/tools/agent-framework/skills; \
+        if ! jq -e ".tools[\"astral-ai\"].enabled == true" /app/config/servers.json >/dev/null; then \
+            echo "Astral AI bundle: disabled"; \
+            exit 0; \
+        fi; \
+        echo "Astral AI release bundle:"; \
+        for binary in astral-ai astral-ai-mcp astral-ai-tool-policy-hook; do \
+            test -x "/app/tools/astral-ai/bin/$binary"; \
+            test ! -L "/app/tools/astral-ai/bin/$binary"; \
+        done; \
+        test -s /app/tools/astral-ai/bridge/astral-ai-paths.json; \
+        skills_dir=/app/tools/astral-ai/skills; \
         test -d "$skills_dir"; \
         unexpected_link="$(find "$skills_dir" -type l -print -quit)"; \
         test -z "$unexpected_link"; \
@@ -80,8 +84,8 @@ test:
             test ! -L "$skill_dir/SKILL.md"; \
             found_skill=true; \
         done; \
-        test "$found_skill" = true'
-    @echo "  PASS"
+        test "$found_skill" = true; \
+        echo "  PASS"'
 
 check:
     @echo "Validating config..."
@@ -92,6 +96,8 @@ check:
         done
     @bash -n scripts/install.sh
     @bash -n scripts/test-playwright.sh
+    @bash -n scripts/start-toolbox.sh
+    @python3 -m unittest discover -s scripts -p 'test_*.py'
     @python3 -m unittest discover -s bridge -p 'test_*.py'
     @echo "Status: PASS"
 

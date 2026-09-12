@@ -48,7 +48,7 @@ base image.
 | playwright | Nix | Browser automation and page inspection |
 | figma | Remote HTTP | Official Figma design context |
 | blender | Python | Blender scene creation and rendering |
-| agent-framework | Rust | Checking, planning, implementation, review, and Git workflows |
+| astral-ai | Rust | Checking, planning, implementation, review, and Git workflows |
 
 ## Quick start
 
@@ -97,21 +97,22 @@ claude mcp add --transport http figma https://mcp.figma.com/mcp
 Authenticate Figma through the MCP client's connection management UI. The
 toolbox does not store a Figma access token.
 
-## Deploying agent-framework-rs
+## Optional Astral AI service
 
-The old TypeScript `agent-framework` checkout, Node runtime, adapter files,
-global hooks, persistent Docker volume, and symlink deployment are not part of
-this image. The replacement is built from
-`https://github.com/timlisemer/agent-framework-rs` with the repository's locked
-dependencies.
+Set `.tools["astral-ai"].enabled` in `config/servers.json` before you build the
+image. The entry is enabled by default. Set it to `false` for a toolbox without
+AI. Disabled mode needs no AI binaries, account, configuration, or mounts.
+The base Compose file needs no AI setup. If AI is enabled but cannot start,
+the container reports the failure and stays available for other tools.
 
-The repository is private. Image builds require a fine-grained GitHub token
-with read-only **Contents** access to `timlisemer/agent-framework-rs`. Store it
-in the mcp-toolbox repository as the Actions secret
-`AGENT_FRAMEWORK_REPO_TOKEN`; the workflow passes it to BuildKit as
-`github_token`, and the credential is not retained in the image.
+The bundle uses revision `1b5b7d1b0533749b632f30f7d04950f284462f42` from
+`https://github.com/timlisemer/agent-framework-rs`. This is still the upstream
+repository. Builds use locked dependencies and run `workspace-quality generate`.
 
-For a local build, expose the same token through an environment variable:
+The repository is private. When AI is enabled, image builds require a GitHub
+token with read-only **Contents** access to `timlisemer/agent-framework-rs`.
+The existing Actions secret `AGENT_FRAMEWORK_REPO_TOKEN` supplies the BuildKit
+secret `github_token`. For a local build:
 
 ```bash
 docker build \
@@ -119,106 +120,70 @@ docker build \
   -t mcp-toolbox:latest .
 ```
 
-The image retains the two release executables and the canonical,
-adapter-independent skill bundle:
+The image keeps these regular files, including the shipped skill names:
 
 ```text
-/app/bin/
-└── mcp-path-bridge
-/app/tools/agent-framework/
+/app/bin/mcp-path-bridge
+/app/tools/astral-ai/
 ├── bin/
-│   ├── agent-framework-mcp
-│   └── agent-framework-tool-policy-hook
+│   ├── astral-ai
+│   ├── astral-ai-mcp
+│   └── astral-ai-tool-policy-hook
 ├── bridge/
-│   └── agent-framework-paths.json
+│   └── astral-ai-paths.json
 └── skills/
     └── agent-framework-*/
         └── SKILL.md
 ```
 
-`workspace-quality generate` produces every `SKILL.md` from one Rust-owned
-inventory. There are no separate Claude and Codex copies to drift apart; both
-clients receive the same generated files.
-
-`agent-framework-mcp` is the stdio MCP server.
-`agent-framework-tool-policy-hook` is the provider hook policy host. The MCP
-server discovers it next to its own executable for request-scoped
-agent-framework workflows. For top-level Claude and Codex sessions, the host
-generates the corresponding per-user settings and hook files, and copies the
-same skill bundle into both clients. Both executables and every skill artifact
-must remain regular files; the deployment does not use symlinks.
-
-Unlike the other local servers, agent-framework must run on the host. Its
-workflows inspect host repositories and launch the host's authenticated
-`claude` or `codex` executable. Running it through `docker exec` would isolate
-the repositories, client executables, configuration, and credentials it needs.
-
-Copy the bundle from a running toolbox container to a host-owned directory:
+For AI hosting, use `docker-compose.astral-ai.yml` with the base Compose file.
+It mounts host `/var/lib/astral-ai/control` at the same container path and
+stores `/var/lib/astral-ai/data` in the persistent `astral-ai-data` volume.
+Select Docker ownership and create an account before you start the service.
+Run these setup commands with the same mounts:
 
 ```bash
-mkdir -p /path/to/agent-framework/bin /path/to/agent-framework/skills
-docker cp mcp-toolbox:/app/tools/agent-framework/bin/. \
-  /path/to/agent-framework/bin/
-docker cp mcp-toolbox:/app/tools/agent-framework/skills/. \
-  /path/to/agent-framework/skills/
-docker cp mcp-toolbox:/app/tools/agent-framework/bridge/. \
-  /path/to/agent-framework/bridge/
-chmod 755 /path/to/agent-framework/bin/agent-framework-*
+sudo mkdir -p /var/lib/astral-ai/control
+docker-compose -f docker-compose.yml -f docker-compose.astral-ai.yml run --rm --no-deps mcp-toolbox \
+  /app/tools/astral-ai/bin/astral-ai hosting select docker \
+  --control-dir /var/lib/astral-ai/control
+docker-compose -f docker-compose.yml -f docker-compose.astral-ai.yml run --rm --no-deps mcp-toolbox \
+  /app/tools/astral-ai/bin/astral-ai account bootstrap --display-name "Local user" \
+  --data-dir /var/lib/astral-ai/data
+docker-compose -f docker-compose.yml -f docker-compose.astral-ai.yml up -d
 ```
 
-Copy the lightweight path bridge to the same host deployment. The bridge uses
-only the Python standard library. It does not need a build step or a compiler.
+Ordinary startup does not run these setup commands. Do not use `down -v` if you
+need to keep the AI data volume. Use both Compose files for AI container
+operations; the `just run` and `just restart` commands use only the base file.
+
+When enabled, `scripts/start-toolbox.sh` starts one service:
 
 ```bash
-docker cp mcp-toolbox:/app/bin/mcp-path-bridge \
-  /path/to/agent-framework/bin/mcp-path-bridge
-chmod 755 /path/to/agent-framework/bin/mcp-path-bridge
+/app/tools/astral-ai/bin/astral-ai serve \
+  --mode docker \
+  --control-dir /var/lib/astral-ai/control \
+  --data-dir /var/lib/astral-ai/data \
+  --socket /var/lib/astral-ai/data/service.sock
 ```
 
-The default provider is Claude Code. Select Codex with
-`AGENT_FRAMEWORK_ADAPTER=codex`:
+The startup script forwards container shutdown to this process and waits for
+it to exit. If the service exits, the toolbox stays available for `docker exec`.
+Use container logs to see startup errors. Restart the container after you
+correct an AI setup error.
+
+Register the on-demand MCP client with the service socket and token file:
 
 ```bash
-# Claude Code provider
-claude mcp add agent-framework --scope user -- \
-  env AGENT_FRAMEWORK_ADAPTER=claude \
-  /path/to/agent-framework/bin/agent-framework-mcp
-
-# Direct protocol probe using the Codex provider
-printf '%s\n' \
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' \
-  | AGENT_FRAMEWORK_ADAPTER=codex \
-    /path/to/agent-framework/bin/agent-framework-mcp
+claude mcp add astral-ai --scope user -- docker exec -i \
+  -e ASTRAL_AI_SOCKET=/var/lib/astral-ai/data/service.sock \
+  -e ASTRAL_AI_TOKEN_FILE=/var/lib/astral-ai/data/token \
+  mcp-toolbox /app/tools/astral-ai/bin/astral-ai-mcp
 ```
 
-The MCP wire names remain `check`, `validate_plan`, `create_planfile`,
-`implement`, `validate_implementation`, `confirm`, `fullconfirm`, `commit`,
-`push`, `list_repos`, `validate_intent`, `transcript`, `locate_scenario`, and
-`scenario_tester`.
-
-### NixOS deployment shape
-
-A declarative NixOS deployment should:
-
-1. Start the toolbox container without a persistent agent-framework volume.
-2. Copy both release executables and the canonical skill bundle from the image
-   into a host directory.
-3. Ensure the copied executables are regular and executable, and reject any
-   symlink in the skill bundle.
-4. Register `agent-framework-mcp` as a host-native MCP server with the correct
-   `AGENT_FRAMEWORK_ADAPTER` value.
-5. Copy the host-generated Claude settings and Codex hook definition into each
-   user's home as regular, user-owned files. Replace them on every rebuild but
-   leave them mutable between rebuilds. Generate the matching Codex hook trust
-   state in the user's writable `config.toml`.
-6. Copy every canonical `agent-framework-*` skill directory into both
-   `~/.claude/skills` and `~/.codex/skills` as regular, mutable, user-owned
-   files. Replace only framework-owned skills on every rebuild.
-7. Keep the host's `claude`, `codex`, credentials, and repository paths
-   available through the normal user environment.
-
-No agent-framework `.env`, adapter-specific command directory, or agent
-directory is required.
+Each MCP invocation connects to the running service. It must not start another
+runtime. The catalog entry contains the same socket and token file values.
+`just test` checks the AI bundle only when the container's catalog entry is enabled.
 
 ## Windows path bridge
 
@@ -234,16 +199,16 @@ hook provider.
 The bridge does not change all strings. Each MCP server owns a separate path
 profile. A profile declares request fields, structured result fields, and hook
 fields. An MCP server with no enabled profile gets no path conversion.
-Agent Framework creates its profile from Rust-owned JSON Schemas through its
-existing `workspace-quality` generator. The Agent Framework audit rejects a
+Astral AI creates its profile from Rust-owned JSON Schemas through its
+existing `workspace-quality` generator. The Astral AI audit rejects a
 missing or stale generated profile. The toolbox build runs that generator and
-stores the generated file under `/app/tools/agent-framework/bridge/`.
+stores the generated file under `/app/tools/astral-ai/bridge/`.
 The generated profile also declares the host-command bridge contract.
-The MCP proxy gives this contract to Agent Framework when it starts the server.
+The MCP proxy gives this contract to Astral AI when it starts the server.
 
 Each path mapping declares an `execution_host`. The value is `windows` when
-Windows owns the mapped files. It is `linux` when Linux owns them. Agent
-Framework sends every repository command through one generic command bridge.
+Windows owns the mapped files. It is `linux` when Linux owns them. Astral
+AI sends every repository command through one generic command bridge.
 The bridge receives the executable, arguments, working directory, and explicit
 environment changes. A command can also declare that its standard output is
 one filesystem path. The bridge translates only this typed output and keeps
@@ -276,11 +241,14 @@ Windows MCP or hook client. This example produces the WSL MCP command:
 /path/to/mcp-path-bridge client-command \
   --config /path/to/windows-bridge.json \
   --profile wsl \
-  --server agent-framework \
+  --server astral-ai \
   --mode mcp-stdio \
   --bridge-command /path/to/mcp-path-bridge \
   --client-working-directory 'D:\repository' \
-  -- /path/to/agent-framework-mcp
+  -- docker exec -i \
+    -e ASTRAL_AI_SOCKET=/var/lib/astral-ai/data/service.sock \
+    -e ASTRAL_AI_TOKEN_FILE=/var/lib/astral-ai/data/token \
+    mcp-toolbox /app/tools/astral-ai/bin/astral-ai-mcp
 ```
 
 This example produces the remote hook command:
@@ -289,11 +257,11 @@ This example produces the remote hook command:
 /path/to/mcp-path-bridge client-command \
   --config /path/to/windows-bridge.json \
   --profile windows-remote \
-  --server agent-framework \
+  --server astral-ai \
   --mode hook \
   --bridge-command /path/to/mcp-path-bridge \
   --client-working-directory 'D:\repository' \
-  -- /path/to/agent-framework-tool-policy-hook tool-policy-hook
+  -- docker exec -i mcp-toolbox /app/tools/astral-ai/bin/astral-ai-tool-policy-hook tool-policy-hook
 ```
 
 The path engine accepts slash and backslash forms of absolute Windows paths.
@@ -357,10 +325,13 @@ GitHub repositories set `private_repository` to `true` and use the
 mcp-toolbox/
 ├── Dockerfile
 ├── docker-compose.yml
+├── docker-compose.astral-ai.yml
 ├── justfile
 ├── config/servers.json
 ├── patches/
-└── scripts/install.sh
+└── scripts/
+    ├── install.sh
+    └── start-toolbox.sh
 ```
 
 ## Commands
