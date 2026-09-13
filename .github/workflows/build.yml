@@ -43,7 +43,7 @@ jobs:
           pull: true
           tags: ghcr.io/${{ github.repository }}/mcp-toolbox-linux-amd64
           secrets: |
-            github_token=${{ secrets.AGENT_FRAMEWORK_REPO_TOKEN }}
+            github_token=${{ secrets.ASTRAL_AI_REPO_TOKEN }}
 
       - name: Restore GitHub Actions registry credentials
         uses: docker/login-action@v4
@@ -84,7 +84,7 @@ jobs:
           pull: true
           tags: ghcr.io/${{ github.repository }}/mcp-toolbox-linux-arm64
           secrets: |
-            github_token=${{ secrets.AGENT_FRAMEWORK_REPO_TOKEN }}
+            github_token=${{ secrets.ASTRAL_AI_REPO_TOKEN }}
 
       - name: Restore GitHub Actions registry credentials
         uses: docker/login-action@v4

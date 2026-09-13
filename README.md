@@ -105,18 +105,18 @@ AI. Disabled mode needs no AI binaries, account, configuration, or mounts.
 The base Compose file needs no AI setup. If AI is enabled but cannot start,
 the container reports the failure and stays available for other tools.
 
-The bundle uses revision `88380d3f45f710b57128d280aefb6b06090a4e38` from the `main` branch of
-`https://github.com/timlisemer/agent-framework-rs`. This is still the upstream
+The bundle uses revision `f96931822cc6750d11ec301fa4d957831b12c9fe` from the `main` branch of
+`https://github.com/timlisemer/astral-ai`. This is still the upstream
 repository. Builds use locked dependencies and run `workspace-quality generate`.
 
 The repository is private. When AI is enabled, image builds require a GitHub
-token with read-only **Contents** access to `timlisemer/agent-framework-rs`.
-The existing Actions secret `AGENT_FRAMEWORK_REPO_TOKEN` supplies the BuildKit
+token with read-only **Contents** access to `timlisemer/astral-ai`.
+The existing Actions secret `ASTRAL_AI_REPO_TOKEN` supplies the BuildKit
 secret `github_token`. For a local build:
 
 ```bash
 docker build \
-  --secret id=github_token,env=AGENT_FRAMEWORK_REPO_TOKEN \
+  --secret id=github_token,env=ASTRAL_AI_REPO_TOKEN \
   -t mcp-toolbox:latest .
 ```
 
@@ -132,7 +132,7 @@ The image keeps these regular files, including the shipped skill names:
 ├── bridge/
 │   └── astral-ai-paths.json
 └── skills/
-    └── agent-framework-*/
+    └── astral-ai-*/
         └── SKILL.md
 ```
 

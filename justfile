@@ -78,7 +78,7 @@ test:
         unexpected_link="$(find "$skills_dir" -type l -print -quit)"; \
         test -z "$unexpected_link"; \
         found_skill=false; \
-        for skill_dir in "$skills_dir"/agent-framework-*; do \
+        for skill_dir in "$skills_dir"/astral-ai-*; do \
             test -d "$skill_dir" || continue; \
             test -f "$skill_dir/SKILL.md"; \
             test ! -L "$skill_dir/SKILL.md"; \
