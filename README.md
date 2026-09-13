@@ -105,7 +105,7 @@ AI. Disabled mode needs no AI binaries, account, configuration, or mounts.
 The base Compose file needs no AI setup. If AI is enabled but cannot start,
 the container reports the failure and stays available for other tools.
 
-The bundle uses revision `f96931822cc6750d11ec301fa4d957831b12c9fe` from the `main` branch of
+The bundle uses the latest commit from the default branch (`main`) of
 `https://github.com/timlisemer/astral-ai`. This is still the upstream
 repository. Builds use locked dependencies and run `workspace-quality generate`.
 
