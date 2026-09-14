@@ -102,8 +102,8 @@ toolbox does not store a Figma access token.
 Set `.tools["astral-ai"].enabled` in `config/servers.json` before you build the
 image. The entry is enabled by default. Set it to `false` for a toolbox without
 AI. Disabled mode needs no AI binaries, account, configuration, or mounts.
-The base Compose file needs no AI setup. If AI is enabled but cannot start,
-the container reports the failure and stays available for other tools.
+The base Compose file needs no AI setup when AI is disabled. If AI is enabled
+but cannot start, the container exits with the service error.
 
 The bundle uses the latest commit from the default branch (`main`) of
 `https://github.com/timlisemer/astral-ai`. This is still the upstream
@@ -137,23 +137,23 @@ The image keeps these regular files, including the shipped skill names:
 ```
 
 For AI hosting, use `docker-compose.astral-ai.yml` with the base Compose file.
-It mounts host `/var/lib/astral-ai/control` at the same container path and
+It mounts host `/var/lib/astral-ai/instances/docker/control` at the same container path and
 stores `/var/lib/astral-ai/data` in the persistent `astral-ai-data` volume.
-Select Docker ownership and create an account before you start the service.
+Each control directory identifies one service instance. This Docker instance can run alongside Astral, which retains `/var/lib/astral-ai/control`. Select Docker ownership and create an account before you start the service.
 Run these setup commands with the same mounts:
 
 ```bash
-sudo mkdir -p /var/lib/astral-ai/control
+sudo mkdir -p /var/lib/astral-ai/instances/docker/control
 docker-compose -f docker-compose.yml -f docker-compose.astral-ai.yml run --rm --no-deps mcp-toolbox \
-  /app/tools/astral-ai/bin/astral-ai hosting select docker \
-  --control-dir /var/lib/astral-ai/control
+  /app/tools/astral-ai/bin/astral-ai hosting select docker --if-unset \
+  --control-dir /var/lib/astral-ai/instances/docker/control
 docker-compose -f docker-compose.yml -f docker-compose.astral-ai.yml run --rm --no-deps mcp-toolbox \
-  /app/tools/astral-ai/bin/astral-ai account bootstrap --display-name "Local user" \
+  /app/tools/astral-ai/bin/astral-ai account bootstrap --if-unset --display-name "Local user" \
   --data-dir /var/lib/astral-ai/data
 docker-compose -f docker-compose.yml -f docker-compose.astral-ai.yml up -d
 ```
 
-Ordinary startup does not run these setup commands. Do not use `down -v` if you
+The NixOS deployment runs `scripts/prepare-astral-ai.sh` in a separate provisioning container before starting the service. It uses the same persistent mounts and UID. Existing valid credentials are preserved; partial account state is rejected. Ordinary startup does not run these setup commands. Do not use `down -v` if you
 need to keep the AI data volume. Use both Compose files for AI container
 operations; the `just run` and `just restart` commands use only the base file.
 
@@ -168,15 +168,20 @@ When enabled, `scripts/start-toolbox.sh` starts one service:
 /app/tools/astral-ai/bin/astral-ai serve \
   --settings /app/config/astral-settings.toml \
   --mode docker \
-  --control-dir /var/lib/astral-ai/control \
+  --control-dir /var/lib/astral-ai/instances/docker/control \
   --data-dir /var/lib/astral-ai/data \
   --socket /var/lib/astral-ai/data/service.sock
 ```
 
-The startup script forwards container shutdown to this process and waits for
-it to exit. If the service exits, the toolbox stays available for `docker exec`.
-Use container logs to see startup errors. Restart the container after you
-correct an AI setup error.
+The startup script replaces itself with the AI service. The service receives
+container shutdown directly. If it exits, the container exits. The image health
+probe authenticates with the service; a running container alone is not a readiness
+check. Use container logs to see errors. Restart after you correct the cause.
+
+The image includes Codex and Claude executables for service-owned provider
+processes. NixOS mounts `/home` at the same path and runs the container with the
+selected user’s numeric ID. This preserves repository, credential, and transcript
+paths. Client hooks use the same `session-bindings.sqlite3` database as the service.
 
 Register the on-demand MCP client with the service socket and token file:
 
@@ -355,3 +360,17 @@ just check    Validate configuration and scripts
 just clean    Remove the local container and image
 just rebuild  Clean, build, and run
 ```
+
+### Readiness and client storage
+
+When enabled, Astral AI is PID 1. A service failure stops the container. The image
+health check performs an authenticated socket handshake; a running toolbox process
+alone is not readiness. The disabled toolbox can still serve its other tools.
+
+MCP clients and external policy hooks must use the same service data root. Set
+`AGENTS_SDK_SESSION_BINDING_DATABASE=/var/lib/astral-ai/data/session-bindings.sqlite3`
+for external hooks. This is where the running service redeems registered calls.
+Mount caller repositories and transcripts at their original paths. The NixOS
+deployment mounts `/home` and uses the host service user's UID and home, preserving
+provider credentials and file ownership. Its Windows bridge runs inside the
+container and receives the WSL and VM filesystem mounts.

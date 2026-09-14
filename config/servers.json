@@ -138,7 +138,9 @@
       "default_args": [],
       "environment": {
         "ASTRAL_AI_SOCKET": "/var/lib/astral-ai/data/service.sock",
-        "ASTRAL_AI_TOKEN_FILE": "/var/lib/astral-ai/data/token"
+        "ASTRAL_AI_TOKEN_FILE": "/var/lib/astral-ai/data/token",
+        "ASTRAL_AI_RUNTIME_ROOT": "/var/lib/astral-ai/data",
+        "AGENTS_SDK_SESSION_BINDING_DATABASE": "/var/lib/astral-ai/data/session-bindings.sqlite3"
       }
     }
   }

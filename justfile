@@ -97,6 +97,8 @@ check:
     @bash -n scripts/install.sh
     @bash -n scripts/test-playwright.sh
     @bash -n scripts/start-toolbox.sh
+    @bash -n scripts/prepare-astral-ai.sh
+    @bash -n scripts/health-toolbox.sh
     @python3 -m unittest discover -s scripts -p 'test_*.py'
     @python3 -m unittest discover -s bridge -p 'test_*.py'
     @echo "Status: PASS"

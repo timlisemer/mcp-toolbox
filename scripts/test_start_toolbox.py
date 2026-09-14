@@ -100,7 +100,7 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(
             json.loads(self.events.read_text()),
             ["serve", "--settings", "/app/config/astral-settings.toml",
-             "--mode", "docker", "--control-dir", "/var/lib/astral-ai/control",
+             "--mode", "docker", "--control-dir", "/var/lib/astral-ai/instances/docker/control",
              "--data-dir", "/var/lib/astral-ai/data", "--socket",
              "/var/lib/astral-ai/data/service.sock"],
         )
@@ -110,16 +110,13 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(len(self.events.read_text().splitlines()), 2)
         self.assertTrue(self.events.read_text().endswith("stopped\n"))
 
-    def test_service_failure_keeps_toolbox_running(self):
+    def test_service_failure_stops_toolbox(self):
         self.start(True, "sys.exit(7)\n")
-        self.assert_tail()
-        self.assertIn("status 7", self.log.read_text())
-        self.assertIn("toolbox remains available", self.log.read_text())
+        self.assertEqual(self.process.wait(timeout=3), 7)
 
-    def test_missing_binary_keeps_toolbox_running(self):
+    def test_missing_binary_stops_toolbox(self):
         self.start(True)
-        self.assert_tail()
-        self.assertIn("status 127", self.log.read_text())
+        self.assertEqual(self.process.wait(timeout=3), 127)
 
 
 if __name__ == "__main__":

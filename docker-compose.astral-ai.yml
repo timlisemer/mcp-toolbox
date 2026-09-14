@@ -1,8 +1,10 @@
 services:
   mcp-toolbox:
     volumes:
-      - /var/lib/astral-ai/control:/var/lib/astral-ai/control
+      - /var/lib/astral-ai/instances/docker/control:/var/lib/astral-ai/instances/docker/control
       - astral-ai-data:/var/lib/astral-ai/data
+      - astral-ai-home:/root
 
 volumes:
   astral-ai-data:
+  astral-ai-home:
