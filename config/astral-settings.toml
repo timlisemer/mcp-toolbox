@@ -2,7 +2,7 @@ version = 2
 
 [settings.ai]
 enable = true
-defaultModelTier = "sonnet"
+defaultModelTier = "opus"
 
 [settings.ai.host]
 enable = true

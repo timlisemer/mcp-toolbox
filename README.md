@@ -159,8 +159,11 @@ operations; the `just run` and `just restart` commands use only the base file.
 
 Edit `config/astral-settings.toml` before building the image. It uses the same
 settings format that Astral's Nix options generate. The service reads this file
-directly. The supplied file selects the `sonnet` model tier and disables host
+directly. The supplied file selects the `opus` model tier and disables host
 network access.
+The Compose configuration explicitly sets `ASTRAL_AI_ADAPTER=codex`.
+For other deployments, set `ASTRAL_AI_ADAPTER` explicitly to `codex` or `claude`.
+The service rejects missing AI enablement, host enablement, model tier, network policy, or provider selection.
 
 When enabled, `scripts/start-toolbox.sh` starts one service:
 

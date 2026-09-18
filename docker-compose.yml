@@ -7,6 +7,7 @@ services:
     network_mode: host
     shm_size: "2gb"
     environment:
+      - ASTRAL_AI_ADAPTER=codex
       - BLENDER_HOST=${BLENDER_HOST:-127.0.0.1}
       - BLENDER_PORT=${BLENDER_PORT:-9876}
     logging:
