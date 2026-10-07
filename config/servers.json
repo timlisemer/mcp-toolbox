@@ -142,6 +142,40 @@
         "ASTRAL_AI_RUNTIME_ROOT": "/var/lib/astral-ai/data",
         "AGENTS_SDK_SESSION_BINDING_DATABASE": "/var/lib/astral-ai/data/session-bindings.sqlite3"
       }
+    },
+    "gitea": {
+      "enabled": true,
+      "type": "go",
+      "description": "Official Gitea MCP server for the configured Gitea instance",
+      "repository": "https://gitea.com/gitea/gitea-mcp.git",
+      "revision": "v1.8.0",
+      "build_command": "go build -o gitea-mcp .",
+      "binary_path": "gitea-mcp",
+      "install_path": "gitea-mcp",
+      "capabilities": [
+        "repositories",
+        "issues",
+        "pull-requests"
+      ],
+      "default_args": [
+        "-t",
+        "stdio"
+      ],
+      "environment": {}
+    },
+    "homeassistant": {
+      "enabled": true,
+      "type": "node",
+      "description": "Preinstalled stdio adapter for the Home Assistant MCP endpoint",
+      "repository": "",
+      "build_command": "npm install --omit=dev mcp-remote@0.14.3",
+      "binary_path": "node_modules/mcp-remote/dist/proxy.js",
+      "install_path": "node_modules/mcp-remote/dist/proxy.js",
+      "capabilities": [
+        "home-assistant"
+      ],
+      "default_args": [],
+      "environment": {}
     }
   }
 }

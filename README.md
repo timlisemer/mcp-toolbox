@@ -377,3 +377,22 @@ Mount caller repositories and transcripts at their original paths. The NixOS
 deployment mounts `/home` and uses the host service user's UID and home, preserving
 provider credentials and file ownership. Its Windows bridge runs inside the
 container and receives the WSL and VM filesystem mounts.
+
+## Gitea and Home Assistant
+
+The image installs the official Gitea MCP binary and a pinned `mcp-remote`
+stdio adapter. Set `GITEA_HOST` and `GITEA_ACCESS_TOKEN` in the container
+environment, then run `/app/tools/gitea/gitea-mcp -t stdio` through `docker exec -i`.
+
+For the existing Home Assistant MCP integration, set
+`HOMEASSISTANT_AUTHORIZATION=Bearer <long-lived-access-token>` in the container
+environment. Run the preinstalled adapter through `docker exec -i`:
+
+```sh
+node /app/tools/homeassistant/node_modules/mcp-remote/dist/proxy.js \
+  https://homeassistant.example.com/api/mcp --transport http-only \
+  --header 'Authorization:${HOMEASSISTANT_AUTHORIZATION}'
+```
+
+Keep the header argument literal. The adapter reads the token from its own
+environment. It does not install packages when an MCP client starts.
